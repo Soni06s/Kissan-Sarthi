@@ -1,0 +1,58 @@
+/* 1. GLOBAL RESET: Ensures padding/margins don't break layouts */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* 2. BODY STYLING: Sets the background color and default font */
+body {
+  margin: 0;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background-color: #F1F8E9; /* KissanSarthi Light Green Background */
+  color: #1A2E1A; /* KissanSarthi Dark Forest Text */
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 3. PREMIUM SCROLLBAR: Makes the app look like a modern SaaS tool */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: #A5D6A7;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 4. PAGE ANIMATIONS: Used in App.jsx for smooth transitions */
+@keyframes fadeInUp {
+  from { 
+    opacity: 0; 
+    transform: translateY(20px); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0); 
+  }
+}
+
+.page-transition {
+  animation: fadeInUp 0.4s ease-out forwards;
+}
+
+/* 5. HELPER CLASSES: For quick grid layouts if needed */
+.grid-container {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+/* Remove default blue outlines on buttons */
+button:focus {
+  outline: none;
+}

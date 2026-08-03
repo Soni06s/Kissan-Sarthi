@@ -1,0 +1,5 @@
+node_modules/
+dist/
+build/
+.env
+KissanSarthi/kissan-sarthi-7a07f-firebase-adminsdk-fbsvc-34ee2dce98.json

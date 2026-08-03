@@ -1,0 +1,120 @@
+{
+  "info": {
+    "name": "KissanSarthi Auth OTP API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Register",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Aman\",\n  \"email\": \"aman@example.com\",\n  \"password\": \"Password123\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:5000/api/auth/register",
+          "host": ["http://localhost:5000"],
+          "path": ["api", "auth", "register"]
+        }
+      }
+    },
+    {
+      "name": "Verify OTP",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"aman@example.com\",\n  \"otp\": \"123456\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:5000/api/auth/verify-otp",
+          "host": ["http://localhost:5000"],
+          "path": ["api", "auth", "verify-otp"]
+        }
+      }
+    },
+    {
+      "name": "Resend OTP",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"aman@example.com\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:5000/api/auth/resend-otp",
+          "host": ["http://localhost:5000"],
+          "path": ["api", "auth", "resend-otp"]
+        }
+      }
+    },
+    {
+      "name": "Login",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"aman@example.com\",\n  \"password\": \"Password123\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:5000/api/auth/login",
+          "host": ["http://localhost:5000"],
+          "path": ["api", "auth", "login"]
+        }
+      }
+    },
+    {
+      "name": "Forgot Password",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"aman@example.com\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:5000/api/auth/forgot-password",
+          "host": ["http://localhost:5000"],
+          "path": ["api", "auth", "forgot-password"]
+        }
+      }
+    },
+    {
+      "name": "Verify Reset OTP",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"aman@example.com\",\n  \"otp\": \"123456\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:5000/api/auth/verify-reset-otp",
+          "host": ["http://localhost:5000"],
+          "path": ["api", "auth", "verify-reset-otp"]
+        }
+      }
+    },
+    {
+      "name": "Reset Password",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"aman@example.com\",\n  \"otp\": \"123456\",\n  \"password\": \"NewPassword123\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:5000/api/auth/reset-password",
+          "host": ["http://localhost:5000"],
+          "path": ["api", "auth", "reset-password"]
+        }
+      }
+    }
+  ]
+}
