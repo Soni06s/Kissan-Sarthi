@@ -5,7 +5,11 @@ const marketPriceSchema = new mongoose.Schema(
   {
     commodity: { type: String, required: true, trim: true },
     mandi: { type: String, required: true, trim: true },
+    state: { type: String, default: 'Jammu & Kashmir', trim: true },
+    district: { type: String, default: 'Samba', trim: true },
     price: { type: Number, required: true, min: 0 },
+    minPrice: { type: Number, default: 0 },
+    maxPrice: { type: Number, default: 0 },
     trend: { type: String, enum: MARKET_TRENDS, default: 'stable' },
     date: { type: Date, default: Date.now },
   },

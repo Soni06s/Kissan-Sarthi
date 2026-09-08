@@ -41,8 +41,25 @@ class ErrorBoundary extends React.Component {
             <Icon name="warning" size={48} color="#ef4444" />
             <h1 style={{ marginTop: '20px', fontSize: '24px', fontWeight: '800' }}>Something went wrong</h1>
             <p style={{ marginTop: '12px', color: COLORS.textMuted, fontSize: '14px', lineHeight: '1.6' }}>
-              We're sorry, but the application encountered an unexpected error. Our team has been notified.
+              We're sorry, but the application encountered an unexpected error.
             </p>
+            {this.state.error && (
+              <div style={{
+                marginTop: '16px',
+                padding: '12px',
+                background: '#fee2e2',
+                border: '1px solid #fca5a5',
+                borderRadius: '10px',
+                color: '#991b1b',
+                fontFamily: 'monospace',
+                fontSize: '12px',
+                textAlign: 'left',
+                overflowX: 'auto',
+                maxHeight: '120px'
+              }}>
+                {this.state.error.toString()}
+              </div>
+            )}
             
             <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', marginTop: '32px' }}>
               <button 

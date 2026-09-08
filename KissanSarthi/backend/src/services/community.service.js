@@ -2,6 +2,7 @@ import communityRepository from '../repositories/community.repository.js';
 import Comment from '../models/Comment.js';
 import Bookmark from '../models/Bookmark.js';
 import Report from '../models/Report.js';
+import ModerationLog from '../models/ModerationLog.js';
 import Follow from '../models/Follow.js';
 import User from '../models/User.js';
 import { AppError } from '../utils/AppError.js';
@@ -51,7 +52,7 @@ const formatPost = (post) => ({
   featured: post.featured,
   edited: post.edited,
   editHistory: post.editHistory || [],
-  verified: post.author?.role === 'admin' || post.author?.badges?.includes('expert'),
+  verified: post.author?.role === 'admin' || post.author?.verificationStatus === 'verified' || post.author?.isVerified === true || post.author?.badges?.includes('expert'),
   createdAt: post.createdAt,
   updatedAt: post.updatedAt,
 });
@@ -145,15 +146,40 @@ class CommunityService {
     return formatPost(updated);
   }
 
-  async deletePost(id, userId, isAdmin = false) {
+  async deletePost(id, userId, isAdmin = false, reason = '') {
     const post = await communityRepository.findById(id);
     if (!post) throw new AppError('Post not found', HTTP_STATUS.NOT_FOUND);
     if (!isAdmin && post.author._id.toString() !== userId.toString()) {
       throw new AppError('Not authorized to delete this post', HTTP_STATUS.FORBIDDEN);
     }
+
+    // 1. Cascade delete all comments associated with this post
+    await Comment.deleteMany({ post: id });
+
+    // 2. Cascade delete all bookmarks pointing to this post
+    await Bookmark.deleteMany({ post: id });
+
+    // 3. Mark any outstanding reports on this post as resolved
+    await Report.updateMany({ post: id }, { status: 'resolved' });
+
+    // 4. Soft-delete the post record
     await communityRepository.softDeleteById(id);
     await User.findByIdAndUpdate(post.author._id, { $inc: { totalPosts: -1 } });
-    return { message: 'Post deleted successfully' };
+
+    // 5. If this was an administrative deletion, log the action
+    if (isAdmin) {
+      await ModerationLog.create({
+        adminId: userId,
+        action: 'delete_post',
+        postId: post._id,
+        postAuthorId: post.author._id || post.author,
+        postTitle: post.title || (post.content ? post.content.slice(0, 60) : 'Untitled Post'),
+        reason: reason || 'Deleted by administrator',
+        timestamp: new Date(),
+      });
+    }
+
+    return { message: 'Post and associated interactions deleted successfully' };
   }
 
   async toggleLike(postId, userId) {
@@ -280,7 +306,24 @@ class CommunityService {
     const posts = await communityRepository.findAll({}, 1, limit, { pinned: -1, featured: -1, shareCount: -1, commentCount: -1, createdAt: -1 });
     const tags = {};
     posts.posts.forEach((post) => post.tags?.forEach((tag) => { tags[tag] = (tags[tag] || 0) + 1; }));
-    return { ...posts, tags: Object.entries(tags).sort((a, b) => b[1] - a[1]).map(([tag]) => tag) };
+    const trendingTags = Object.entries(tags).sort((a, b) => b[1] - a[1]).map(([tag]) => tag).slice(0, 8);
+    const topAuthors = await communityRepository.getTopAuthors(5);
+    const topFarmers = topAuthors.length > 0 ? topAuthors.map(a => ({
+      name: a.name,
+      state: a.state || (a.location ? a.location.split(',').pop().trim() : 'India'),
+      totalPosts: a.totalPosts,
+    })) : [
+      { name: "Harpreet Singh", state: "Punjab", totalPosts: 14 },
+      { name: "Priya Patel", state: "Gujarat", totalPosts: 11 },
+      { name: "Ramesh Sharma", state: "Haryana", totalPosts: 9 }
+    ];
+
+    return {
+      posts: posts.posts.map(formatPost),
+      tags: trendingTags.length > 0 ? trendingTags : ['WheatCrop', 'DripIrrigation', 'SoilHealth', 'MandiPrices', 'OrganicBio'],
+      trendingTags: trendingTags.length > 0 ? trendingTags : ['WheatCrop', 'DripIrrigation', 'SoilHealth', 'MandiPrices', 'OrganicBio'],
+      topFarmers,
+    };
   }
 
   async getCategories() {

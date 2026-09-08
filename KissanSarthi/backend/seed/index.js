@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
 import User from '../src/models/User.js';
 import SensorData from '../src/models/SensorData.js';
 import Weather from '../src/models/Weather.js';
@@ -8,53 +9,92 @@ import CommunityPost from '../src/models/CommunityPost.js';
 import Alert from '../src/models/Alert.js';
 import CropRecommendation from '../src/models/CropRecommendation.js';
 import { ROLES, DEFAULT_MANDI } from '../src/config/constants.js';
+import { seedDemoExperts } from '../src/seeds/seedExperts.js';
+import { seedFarmers, DUMMY_FARMERS } from './farmers.js';
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/kissansarthi';
 
 const seed = async () => {
   try {
     await mongoose.connect(MONGODB_URI);
-    console.log('Connected to MongoDB for seeding...');
+    console.log('🌱 Connected to MongoDB for platform seeding...\n');
 
+    // Clean ephemeral collections for fresh demo runs
     await Promise.all([
-      User.deleteMany({}),
       SensorData.deleteMany({}),
       Weather.deleteMany({}),
       MarketPrice.deleteMany({}),
-      CommunityPost.deleteMany({}),
       Alert.deleteMany({}),
       CropRecommendation.deleteMany({}),
     ]);
 
-    const admin = await User.create({
-      name: 'System Admin',
-      email: 'admin@kissansarthi.com',
-      password: 'Admin@123',
-      role: ROLES.ADMIN,
-      location: 'Jammu, J&K',
-      phone: '9876543210',
-    });
+    // 1. Ensure System Admin exists
+    let admin = await User.findOne({ email: 'admin@kissansarthi.in' });
+    if (!admin) {
+      admin = await User.create({
+        name: 'System Admin',
+        email: 'admin@kissansarthi.in',
+        password: 'Admin@123',
+        role: ROLES.ADMIN,
+        location: 'Jammu, J&K',
+        phone: '+91 98765 43210',
+        isVerified: true,
+        isActive: true,
+        verificationStatus: 'verified',
+        authProvider: 'seed',
+      });
+      console.log('✅ Created Admin: admin@kissansarthi.in');
+    }
 
-    const farmer = await User.create({
-      name: 'Sahil Soni',
-      email: 'sahil@kissansarthi.com',
-      password: 'Farmer@123',
-      role: ROLES.FARMER,
-      location: 'Bari Brahmana, J&K',
-      farmSize: 14.2,
-      phone: '9876543211',
-    });
+    // 2. Ensure Primary Demo Farmer exists
+    let farmer = await User.findOne({ email: 'farmer@kissansarthi.in' });
+    if (!farmer) {
+      farmer = await User.create({
+        name: 'Sahil Soni',
+        email: 'farmer@kissansarthi.in',
+        password: 'Password@123',
+        role: ROLES.FARMER,
+        location: 'Bari Brahmana, Samba, J&K',
+        village: 'Bari Brahmana',
+        district: 'Samba',
+        state: 'Jammu & Kashmir',
+        farmSize: 14.2,
+        phone: '+91 98765 43211',
+        isVerified: true,
+        isActive: true,
+        verificationStatus: 'verified',
+        authProvider: 'seed',
+      });
+      console.log('✅ Created Primary Farmer: farmer@kissansarthi.in');
+    }
 
-    const farmer2 = await User.create({
-      name: 'Ramesh Kumar',
-      email: 'ramesh@kissansarthi.com',
-      password: 'Farmer@123',
-      role: ROLES.FARMER,
-      location: 'Samba, J&K',
-      farmSize: 8.5,
-      phone: '9876543212',
-    });
+    // Also support legacy sahil@kissansarthi.com if needed
+    let legacyFarmer = await User.findOne({ email: 'sahil@kissansarthi.com' });
+    if (!legacyFarmer) {
+      legacyFarmer = await User.create({
+        name: 'Sahil Soni (Legacy)',
+        email: 'sahil@kissansarthi.com',
+        password: 'Farmer@123',
+        role: ROLES.FARMER,
+        location: 'Bari Brahmana, J&K',
+        farmSize: 14.2,
+        isVerified: true,
+        isActive: true,
+        authProvider: 'seed',
+      });
+    }
 
+    const activeFarmerId = farmer._id;
+
+    // 3. Seed 5 Verified Certified Agronomists & Experts
+    console.log('\n🔬 Seeding certified expert profiles...');
+    await seedDemoExperts();
+
+    // 4. Seed 10 Realistic Dummy Indian Farmers (Direct DB Insert, Bypass OTP)
+    console.log('\n🌾 Seeding 10 dummy farmer accounts...');
+    const farmerSeedResult = await seedFarmers();
+
+    // 5. Seed Sensor Telemetry for Primary Farmer
     const moistureValues = [72, 68, 74, 70, 75, 78, 73, 76, 71, 69, 74, 77, 72, 68];
     const sensorRecords = moistureValues.map((moisture, i) => ({
       temperature: 24 + (i % 5),
@@ -64,10 +104,11 @@ const seed = async () => {
       humidity: 60 + (i % 15),
       nodeId: 'BB-001',
       timestamp: new Date(Date.now() - (13 - i) * 3600000),
-      farmer: farmer._id,
+      farmer: activeFarmerId,
     }));
     await SensorData.insertMany(sensorRecords);
 
+    // 6. Seed Microclimate Weather Forecast
     const conditions = ['Sunny', 'Partly Cloudy', 'Heavy Rain', 'Thunderstorm', 'Showers', 'Mostly Sunny', 'Sunny'];
     const weatherRecords = conditions.map((condition, i) => ({
       location: 'Bari Brahmana, J&K',
@@ -82,6 +123,7 @@ const seed = async () => {
     }));
     await Weather.insertMany(weatherRecords);
 
+    // 7. Seed APMC Mandi Rates
     const commodities = [
       { name: 'Wheat', prices: [2200, 2280, 2350, 2300, 2420, 2450, 2480] },
       { name: 'Rice', prices: [3000, 3050, 3100, 3080, 3150, 3200, 3200] },
@@ -106,49 +148,28 @@ const seed = async () => {
     });
     await MarketPrice.insertMany(marketRecords);
 
-    await CommunityPost.insertMany([
-      {
-        author: farmer2._id,
-        content:
-          'Got excellent wheat yield this season - 5.2 ton/ha! Used HD-2967 variety with drip irrigation. The new soil testing showed pH was perfect.',
-        likes: [farmer._id],
-        comments: [{ author: farmer._id, text: 'Great results! Which fertilizer plan did you follow?' }],
-      },
-      {
-        author: farmer._id,
-        content:
-          'Alert: Yellow rust disease spreading in our area. Spray Propiconazole 25% EC at 0.1% concentration immediately.',
-        likes: [],
-        comments: [],
-      },
-      {
-        author: farmer2._id,
-        content: 'Ragi millet harvested! Natural farming without chemicals. Sold directly to consumers at ₹5,500/quintal.',
-        likes: [farmer._id, admin._id],
-        comments: [{ author: admin._id, text: 'Excellent work on organic farming!' }],
-      },
-    ]);
-
+    // 8. Seed Core Alerts
     await Alert.insertMany([
       {
-        user: farmer._id,
+        user: activeFarmerId,
         type: 'warning',
         message: 'Low moisture in field #3 — Consider irrigation',
       },
       {
-        user: farmer._id,
+        user: activeFarmerId,
         type: 'info',
         message: 'Wheat harvest optimal window: Nov 15-25',
       },
       {
-        user: farmer._id,
+        user: activeFarmerId,
         type: 'success',
         message: 'Soil health improved 12% this month',
       },
     ]);
 
+    // 9. Seed Sample Crop Recommendation
     await CropRecommendation.create({
-      user: farmer._id,
+      user: activeFarmerId,
       soilType: 'loamy',
       season: 'rabi',
       nitrogen: 60,
@@ -161,17 +182,24 @@ const seed = async () => {
       tips: ['Sow Oct-Nov', 'First irrigation at 21 days', 'Apply 120kg N/ha in splits'],
     });
 
-    console.log('\n✅ Database seeded successfully!\n');
-    console.log('Login credentials:');
-    console.log('  Admin:  admin@kissansarthi.com  / Admin@123');
-    console.log('  Farmer: sahil@kissansarthi.com  / Farmer@123');
-    console.log('  Farmer: ramesh@kissansarthi.com / Farmer@123');
-    console.log('  Phone login: 9876543211 / Farmer@123\n');
+    console.log('\n=============================================================');
+    console.log('🎉 KissanSarthi Platform Database Seeded Successfully!');
+    console.log('=============================================================');
+    console.log('\n🔑 Core Demonstration Accounts:');
+    console.log('  🛡️ Admin  : admin@kissansarthi.in  | Password: Admin@123');
+    console.log('  🌾 Farmer : farmer@kissansarthi.in | Password: Password@123');
+    console.log('  🔬 Expert : expert.ramesh@kissansarthi.in | Password: Password@123');
+
+    console.log('\n🌾 10 Dummy Seeded Farmers (Password: 123456 | Direct Login, No OTP):');
+    DUMMY_FARMERS.forEach((f, idx) => {
+      console.log(`  ${(idx + 1).toString().padStart(2, ' ')}. ${f.name.padEnd(22, ' ')} | ${f.email.padEnd(38, ' ')} | Crop: ${f.primaryCrop}`);
+    });
+    console.log('\n=============================================================\n');
 
     await mongoose.connection.close();
     process.exit(0);
   } catch (error) {
-    console.error('Seed error:', error.message);
+    console.error('❌ Platform seed error:', error);
     process.exit(1);
   }
 };

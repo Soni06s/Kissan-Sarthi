@@ -26,7 +26,7 @@ class UserRepository {
   }
 
   findByEmailWithOtp(email) {
-    return User.findOne({ email: email.toLowerCase() }).select('+otp +otpExpires +otpLastSent');
+    return User.findOne({ email: email.toLowerCase() }).select('+otp +otpExpires +otpHash +otpExpiresAt +otpLastSent');
   }
 
   findByEmailOrPhoneWithPassword(identifier) {
@@ -38,9 +38,9 @@ class UserRepository {
 
   findByResetToken(hashedToken) {
     return User.findOne({
-      passwordResetToken: hashedToken,
-      passwordResetExpires: { $gt: Date.now() },
-    }).select('+password +passwordResetToken +passwordResetExpires');
+      resetTokenHash: hashedToken,
+      resetTokenExpiresAt: { $gt: Date.now() },
+    }).select('+password +resetTokenHash +resetTokenExpiresAt');
   }
 
   updateById(id, data) {

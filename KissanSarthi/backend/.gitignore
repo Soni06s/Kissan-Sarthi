@@ -5,3 +5,6 @@ src/uploads/*
 !src/uploads/.gitkeep
 *.log
 .DS_Store
+*-firebase-adminsdk-*.json
+*firebase*.json
+serviceAccountKey.json

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import * as authController from '../controllers/auth.controller.js';
 import { protect } from '../middlewares/auth.middleware.js';
 import { validate } from '../middlewares/validate.middleware.js';
-import { uploadProfileImage } from '../middlewares/upload.middleware.js';
+import { uploadProfileImage, uploadVerificationDoc } from '../middlewares/upload.middleware.js';
 import {
   registerValidator,
   loginValidator,
@@ -11,6 +11,7 @@ import {
   forgotPasswordValidator,
   verifyResetOtpValidator,
   resetPasswordValidator,
+  resetPasswordTokenValidator,
   updateProfileValidator,
 } from '../validators/auth.validator.js';
 
@@ -27,7 +28,9 @@ router.post('/refresh-token', authController.refreshToken);
 router.post('/forgot-password', forgotPasswordValidator, validate, authController.forgotPassword);
 router.post('/verify-reset-otp', verifyResetOtpValidator, validate, authController.verifyResetOtp);
 router.post('/reset-password', resetPasswordValidator, validate, authController.resetPassword);
+router.post('/reset-password/:token', resetPasswordTokenValidator, validate, authController.resetPasswordWithToken);
 router.get('/profile', protect, authController.getProfile);
 router.put('/profile', protect, uploadProfileImage, updateProfileValidator, validate, authController.updateProfile);
+router.post('/verify-farmer', protect, uploadVerificationDoc, authController.verifyFarmer);
 
 export default router;

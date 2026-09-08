@@ -68,7 +68,10 @@ export const refreshToken = asyncHandler(async (req, res) => {
 });
 
 export const forgotPassword = asyncHandler(async (req, res) => {
-  const result = await authService.forgotPassword(req.body.email);
+  const result = await authService.forgotPassword({
+    email: req.body.email,
+    mode: req.body.mode || 'link',
+  });
   sendSuccess(res, result.message);
 });
 
@@ -79,8 +82,12 @@ export const verifyResetOtp = asyncHandler(async (req, res) => {
 
 export const resetPassword = asyncHandler(async (req, res) => {
   const result = await authService.resetPassword(req.body);
-  setTokenCookies(res, result);
-  sendSuccess(res, result.message, { user: result.user, accessToken: result.accessToken });
+  sendSuccess(res, result.message);
+});
+
+export const resetPasswordWithToken = asyncHandler(async (req, res) => {
+  const result = await authService.resetPasswordWithToken(req.params.token, req.body.password);
+  sendSuccess(res, result.message);
 });
 
 export const getProfile = asyncHandler(async (req, res) => {
@@ -88,11 +95,19 @@ export const getProfile = asyncHandler(async (req, res) => {
   sendSuccess(res, 'Profile fetched', { user });
 });
 
+import { getFileUrl } from '../middlewares/upload.middleware.js';
+
 export const updateProfile = asyncHandler(async (req, res) => {
   const data = { ...req.body };
   if (req.file) {
-    data.profileImage = `/uploads/profiles/${req.file.filename}`;
+    data.profileImage = getFileUrl(req.file, 'profiles');
   }
   const user = await authService.updateProfile(req.user._id, data);
   sendSuccess(res, 'Profile updated', { user });
+});
+
+export const verifyFarmer = asyncHandler(async (req, res) => {
+  const documentUrl = req.file ? getFileUrl(req.file, 'verification') : req.body.documentUrl;
+  const user = await authService.submitFarmerVerification(req.user._id, req.body, documentUrl);
+  sendSuccess(res, 'Verification application submitted. Admin review pending.', { user });
 });

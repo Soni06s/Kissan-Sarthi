@@ -8,6 +8,8 @@ import { ROLES } from '../config/constants.js';
 const router = Router();
 
 router.get('/', optionalAuth, weatherController.getWeather);
+router.get('/forecast', optionalAuth, weatherController.getWeather);
+router.get('/alerts', optionalAuth, weatherController.getWeather);
 router.post('/', protect, authorize(ROLES.ADMIN), weatherValidator, validate, weatherController.createWeather);
 
 export default router;

@@ -36,6 +36,12 @@ const Login = () => {
       toast.success('Welcome back!');
       navigate('/');
     } catch (err) {
+      if (err.response?.data?.code === 'ACCOUNT_NOT_VERIFIED' || err.response?.data?.requiresVerification) {
+        localStorage.setItem('pendingEmail', form.email);
+        toast.error(err.response?.data?.message || 'Please verify your email before logging in.');
+        navigate('/verify-otp');
+        return;
+      }
       toast.error(err.response?.data?.message || 'Login failed. Please check your credentials.');
     } finally {
       setLoading(false);

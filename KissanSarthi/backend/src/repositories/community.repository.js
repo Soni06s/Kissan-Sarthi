@@ -8,11 +8,11 @@ class CommunityRepository {
 
   findById(id) {
     return CommunityPost.findOne({ _id: id, status: { $ne: 'deleted' } })
-      .populate('author', 'name location profileImage role badges');
+      .populate('author', 'name location profileImage role badges verificationStatus isVerified');
   }
 
   findAdminById(id) {
-    return CommunityPost.findById(id).populate('author', 'name location profileImage role badges');
+    return CommunityPost.findById(id).populate('author', 'name location profileImage role badges verificationStatus isVerified');
   }
 
   async findAll(query = {}, page = 1, limit = 20, sort = { createdAt: -1 }) {
@@ -24,7 +24,7 @@ class CommunityRepository {
       .sort(sort)
       .skip(skip)
       .limit(limit)
-      .populate('author', 'name location profileImage role badges');
+      .populate('author', 'name location profileImage role badges verificationStatus isVerified');
     
     const total = await CommunityPost.countDocuments(filter);
     
@@ -38,7 +38,7 @@ class CommunityRepository {
 
   updateById(id, data) {
     return CommunityPost.findByIdAndUpdate(id, data, { new: true, runValidators: true })
-      .populate('author', 'name location profileImage role badges');
+      .populate('author', 'name location profileImage role badges verificationStatus isVerified');
   }
 
   softDeleteById(id) {
@@ -50,7 +50,7 @@ class CommunityRepository {
       postId,
       { $addToSet: { likes: userId } },
       { new: true }
-    ).populate('author', 'name location profileImage role badges');
+    ).populate('author', 'name location profileImage role badges verificationStatus isVerified');
   }
 
   removeLike(postId, userId) {
@@ -84,6 +84,22 @@ class CommunityRepository {
 
   async incrementReportCount(postId) {
     return CommunityPost.findByIdAndUpdate(postId, { $inc: { reportCount: 1 } }, { new: true });
+  }
+
+  async getTopAuthors(limit = 5) {
+    try {
+      return await CommunityPost.aggregate([
+        { $match: { status: 'active' } },
+        { $group: { _id: '$author', totalPosts: { $sum: 1 }, totalLikes: { $sum: { $size: { $ifNull: ['$likes', []] } } } } },
+        { $sort: { totalPosts: -1, totalLikes: -1 } },
+        { $limit: limit },
+        { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
+        { $unwind: '$user' },
+        { $project: { name: '$user.name', location: '$user.location', city: '$user.city', state: '$user.state', totalPosts: 1, totalLikes: 1 } }
+      ]);
+    } catch {
+      return [];
+    }
   }
 
   count() {

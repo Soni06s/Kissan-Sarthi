@@ -25,11 +25,16 @@ import ForgotPasswordPage from "./pages/auth/ForgotPassword";
 import VerifyResetOTPPage from "./pages/auth/VerifyResetOTP";
 import ResetPasswordPage from "./pages/auth/ResetPassword";
 import ProfilePage from "./pages/Profile";
+import MarketplacePage from "./pages/Marketplace";
+import SchemesPage from "./pages/Schemes";
+import PricingPage from "./pages/Pricing";
+import ExpertsPage from "./pages/Experts";
+import ExpertProfilePage from "./pages/ExpertProfile";
 
 const AuthLayout = ({ children }) => <div>{children}</div>;
 
-const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+const ProtectedRoute = ({ children, allowedRoles }) => {
+  const { isAuthenticated, loading, role, user } = useAuth();
   
   if (loading) {
     return (
@@ -44,6 +49,12 @@ const ProtectedRoute = ({ children }) => {
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
+
+  const currentRole = role || user?.role || 'farmer';
+  if (allowedRoles && !allowedRoles.includes(currentRole)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   return children;
 };
 
@@ -106,6 +117,7 @@ export default function App() {
             <Route path="/forgot-password" element={<AuthLayout><ForgotPasswordPage /></AuthLayout>} />
             <Route path="/verify-reset-otp" element={<AuthLayout><VerifyResetOTPPage /></AuthLayout>} />
             <Route path="/reset-password" element={<AuthLayout><ResetPasswordPage /></AuthLayout>} />
+            <Route path="/reset-password/:token" element={<AuthLayout><ResetPasswordPage /></AuthLayout>} />
             <Route
               path="/*"
               element={
@@ -118,12 +130,17 @@ export default function App() {
                         <Routes>
                           <Route path="/" element={<Navigate to="/dashboard" replace />} />
                           <Route path="/dashboard" element={<DashboardPage />} />
+                          <Route path="/marketplace" element={<MarketplacePage />} />
+                          <Route path="/pricing" element={<PricingPage />} />
+                          <Route path="/experts" element={<ExpertsPage />} />
+                          <Route path="/experts/:id" element={<ExpertProfilePage />} />
                           <Route path="/weather" element={<WeatherPage />} />
                           <Route path="/crop-advisor" element={<CropPage />} />
                           <Route path="/market-prices" element={<MarketPage />} />
                           <Route path="/fertilizer" element={<FertilizerPage />} />
+                          <Route path="/schemes" element={<SchemesPage />} />
                           <Route path="/community" element={<CommunityPage />} />
-                          <Route path="/admin" element={<AdminPage />} />
+                          <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminPage /></ProtectedRoute>} />
                           <Route path="/profile" element={<ProfilePage />} />
                         </Routes>
                       </div>

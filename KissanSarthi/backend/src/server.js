@@ -5,23 +5,28 @@ import app from './app.js';
 import connectDB from './config/database.js';
 import logger from './config/logger.js';
 import { initSocketHandlers } from './sockets/index.js';
+import { startSensorSimulator } from './services/sensorSimulator.service.js';
+import { seedDemoExperts } from './seeds/seedExperts.js';
 
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   await connectDB();
+  await seedDemoExperts();
 
   const server = http.createServer(app);
 
   const io = new Server(server, {
     cors: {
-      origin: process.env.CLIENT_URL || 'http://localhost:5173',
+      origin: (origin, callback) => callback(null, true),
       credentials: true,
     },
   });
 
   initSocketHandlers(io);
   app.set('io', io);
+
+  startSensorSimulator(io);
 
   server.listen(PORT, () => {
     logger.info(`KissanSarthi API running on port ${PORT} [${process.env.NODE_ENV}]`);

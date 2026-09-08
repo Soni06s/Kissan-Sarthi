@@ -13,35 +13,46 @@ export const applySecurityMiddleware = (app) => {
   app.set('trust proxy', 1);
 
   app.use(helmet());
+  const allowedOrigins = [
+    process.env.CLIENT_URL,
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:3000',
+  ].filter(Boolean);
+
   app.use(
     cors({
-      origin: process.env.CLIENT_URL || 'http://localhost:5173',
+      origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          callback(null, true); // Allow dev origins seamlessly
+        }
+      },
       credentials: true,
     })
   );
   app.use(compression());
-  app.use(express.json({ limit: '10kb' }));
-  app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   app.use(cookieParser());
   app.use(mongoSanitize());
   app.use(xss());
 
-  const limiter = rateLimit({
-    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 15 * 60 * 1000,
-    max: parseInt(process.env.RATE_LIMIT_MAX, 10) || 100,
-    message: { success: false, message: 'Too many requests. Please try again later.', errors: [] },
-    standardHeaders: true,
-    legacyHeaders: false,
-  });
-  app.use('/api', limiter);
-
   const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 20,
+    max: 30,
     message: { success: false, message: 'Too many auth attempts. Please try again later.', errors: [] },
   });
   app.use('/api/auth/login', authLimiter);
   app.use('/api/auth/register', authLimiter);
+
+  const chatLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000,
+    max: 20,
+    message: { success: false, message: 'Rate limit exceeded for chat messages. Please wait a moment.', errors: [] },
+  });
+  app.use('/api/chat', chatLimiter);
 
   morgan.token('message', (req, res) => res.locals.errorMessage || '');
   app.use(

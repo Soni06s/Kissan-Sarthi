@@ -34,19 +34,19 @@ const Register = () => {
   const [postOffices, setPostOffices] = useState([]);
   const [locationError, setLocationError] = useState('');
 
-  // Password strength logic
+  // Password strength logic (allows min 6 digits/characters)
   const getPasswordStrength = (pass) => {
     if (!pass) return { label: '', color: 'transparent', width: '0%' };
-    let score = 0;
-    if (pass.length > 5) score += 1;
-    if (pass.length > 7) score += 1;
+    if (pass.length < 6) return { label: 'Min 6 digits/chars required', color: '#ef4444', width: '25%' };
+    let score = 1; // Valid since length >= 6
+    if (pass.length >= 8) score += 1;
     if (/[A-Z]/.test(pass)) score += 1;
     if (/[0-9]/.test(pass)) score += 1;
     if (/[^A-Za-z0-9]/.test(pass)) score += 1;
     
-    if (score < 3) return { label: 'Weak', color: '#ef4444', width: '33%' };
-    if (score < 5) return { label: 'Medium', color: '#eab308', width: '66%' };
-    return { label: 'Strong', color: '#22c55e', width: '100%' };
+    if (score <= 2) return { label: 'Fair (Valid)', color: '#22c55e', width: '50%' };
+    if (score <= 4) return { label: 'Good', color: '#16a34a', width: '75%' };
+    return { label: 'Strong', color: '#15803d', width: '100%' };
   };
 
   const passwordStrength = getPasswordStrength(form.password);
@@ -106,7 +106,7 @@ const Register = () => {
   const validate = () => {
       if (form.fullName.length < 3 || form.fullName.length > 50) return 'Name must be between 3 and 50 characters.';
       if (!/^\d{10}$/.test(form.mobile)) return 'Please enter a valid 10-digit mobile number.';
-      if (passwordStrength.label === 'Weak') return 'Password is too weak.';
+      if (!form.password || form.password.length < 6) return 'Password must be at least 6 digits or characters.';
       if (form.password !== form.confirmPassword) return 'Passwords do not match.';
       if (!/^\d{6}$/.test(form.pincode)) return 'Please enter a valid 6-digit pincode.';
       if (locationError) return 'Please enter a valid pincode.';
@@ -258,7 +258,7 @@ const Register = () => {
               </div>
               <div style={styles.inputGroup}>
                 <FiLock style={styles.icon} />
-                <input name="password" type={showPassword ? 'text' : 'password'} placeholder="Password *" value={form.password} onChange={handleChange} required style={styles.input} />
+                <input name="password" type={showPassword ? 'text' : 'password'} placeholder="Password (min 6 characters/digits) *" value={form.password} onChange={handleChange} required style={styles.input} />
                 <button type="button" onClick={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
                   {showPassword ? <FiEyeOff /> : <FiEye />}
                 </button>

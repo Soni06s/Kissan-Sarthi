@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { signInWithPopup } from 'firebase/auth';
+import React, { useState, useEffect } from 'react';
+import { signInWithPopup, signInWithRedirect, getRedirectResult } from 'firebase/auth';
 import { auth, googleProvider } from '../../config/firebase';
 import { authAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
@@ -13,26 +13,92 @@ export const GoogleAuthButton = ({ actionText }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Check for redirect result on mount if mobile redirect was used
+  useEffect(() => {
+    let isMounted = true;
+    const checkRedirect = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result && result.user && isMounted) {
+          setLoading(true);
+          const idToken = await result.user.getIdToken();
+          const { data } = await authAPI.googleLogin({ idToken });
+          login(data.data.user, data.data.accessToken);
+          const from = location.state?.from?.pathname || '/dashboard';
+          toast.success('Successfully authenticated!');
+          navigate(from, { replace: true });
+        }
+      } catch (err) {
+        console.error('Google Redirect Auth Error:', err);
+        handleAuthError(err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+    checkRedirect();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleAuthError = (err) => {
+    if (err.code === 'auth/popup-closed-by-user') {
+      // Popup closed by user -> silent, no error toast
+      return;
+    }
+    if (
+      err.code === 'auth/network-request-failed' ||
+      err.code === 'auth/configuration-not-found' ||
+      err.code === 'auth/invalid-api-key' ||
+      err.code === 'auth/internal-error'
+    ) {
+      toast.error('Google sign-in is temporarily unavailable, please use email login.');
+      return;
+    }
+    if (err.response?.status === 401) {
+      toast.error('Google token verification failed. Please sign in again.');
+      return;
+    }
+    toast.error(err.response?.data?.message || err.message || 'Google authentication failed.');
+  };
+
   const handleGoogleLogin = async () => {
     try {
       setLoading(true);
-      
-      const result = await signInWithPopup(auth, googleProvider);
+
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+      let result;
+      if (isMobile) {
+        try {
+          await signInWithRedirect(auth, googleProvider);
+          return;
+        } catch (redirectErr) {
+          console.warn('Redirect failed, trying popup fallback', redirectErr);
+          result = await signInWithPopup(auth, googleProvider);
+        }
+      } else {
+        try {
+          result = await signInWithPopup(auth, googleProvider);
+        } catch (popupErr) {
+          if (popupErr.code === 'auth/popup-blocked') {
+            await signInWithRedirect(auth, googleProvider);
+            return;
+          }
+          throw popupErr;
+        }
+      }
+
       const idToken = await result.user.getIdToken();
-      
       const { data } = await authAPI.googleLogin({ idToken });
       login(data.data.user, data.data.accessToken);
-      
+
       const from = location.state?.from?.pathname || '/dashboard';
       toast.success('Successfully authenticated!');
       navigate(from, { replace: true });
     } catch (err) {
       console.error('Google Auth Error:', err);
-      if (err.code === 'auth/popup-closed-by-user') {
-        toast.error('Popup was closed before completing authentication.');
-      } else {
-        toast.error(err.response?.data?.message || 'Failed to authenticate with Google.');
-      }
+      handleAuthError(err);
     } finally {
       setLoading(false);
     }

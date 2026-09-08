@@ -82,8 +82,10 @@ export const AuthProvider = ({ children }) => {
   return (
     <AuthContext.Provider value={{
       user,
+      role: user?.role || 'farmer',
       token,
       isAuthenticated,
+      isLoading: loading,
       loading,
       login,
       logout: handleLogout,

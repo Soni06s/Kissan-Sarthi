@@ -9,5 +9,6 @@ const router = Router();
 router.use(protect);
 router.post('/calculate', fertilizerValidator, validate, fertilizerController.calculateFertilizer);
 router.get('/history', fertilizerController.getFertilizerHistory);
+router.get('/report/:id/pdf', fertilizerController.downloadFertilizerPdf);
 
 export default router;

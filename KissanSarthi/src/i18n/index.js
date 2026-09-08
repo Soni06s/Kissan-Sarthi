@@ -1,12 +1,14 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
-import enCommon from './locales/en/common.json';
+import enCommon from './locales/en.json';
+import hiCommon from './locales/hi.json';
+import guCommon from './locales/gu.json';
 
 const resources = {
   en: { common: enCommon },
-  hi: { common: {} }, // Falls back to en automatically
-  gu: { common: {} }, // Falls back to en automatically
+  hi: { common: hiCommon },
+  gu: { common: guCommon },
 };
 
 const supportedLngs = ['en', 'hi', 'gu'];

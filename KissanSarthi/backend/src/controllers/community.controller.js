@@ -2,6 +2,7 @@ import communityService from '../services/community.service.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { sendSuccess } from '../utils/apiResponse.js';
 import { HTTP_STATUS, ROLES } from '../config/constants.js';
+import { emitNewPost, emitPostLiked } from '../sockets/index.js';
 
 export const getPosts = asyncHandler(async (req, res) => {
   const { page = 1, limit = 20, category, search, state, district, sort = 'recent', tag, author, date, location } = req.query;
@@ -61,6 +62,12 @@ export const createPost = asyncHandler(async (req, res) => {
   const video = videos[0] || null;
   
   const data = await communityService.createPost(req.user._id, { ...req.body, images, videos, video });
+  
+  const io = req.app.get('io');
+  if (io) {
+    emitNewPost(io, data);
+  }
+
   sendSuccess(res, 'Post created', { post: data }, HTTP_STATUS.CREATED);
 });
 
@@ -90,12 +97,19 @@ export const updatePost = asyncHandler(async (req, res) => {
 
 export const deletePost = asyncHandler(async (req, res) => {
   const isAdmin = req.user.role === ROLES.ADMIN;
-  const result = await communityService.deletePost(req.params.id, req.user._id, isAdmin);
+  const reason = req.body?.reason || req.query?.reason || 'Deleted by admin';
+  const result = await communityService.deletePost(req.params.id, req.user._id, isAdmin, reason);
   sendSuccess(res, result.message);
 });
 
 export const likePost = asyncHandler(async (req, res) => {
   const data = await communityService.toggleLike(req.params.id, req.user._id);
+
+  const io = req.app.get('io');
+  if (io) {
+    emitPostLiked(io, { postId: req.params.id, likes: data.likes, likedBy: data.likedBy });
+  }
+
   sendSuccess(res, 'Post like toggled', { post: data });
 });
 

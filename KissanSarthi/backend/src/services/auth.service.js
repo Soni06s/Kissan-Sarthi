@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import userRepository from '../repositories/user.repository.js';
 import { AppError } from '../utils/AppError.js';
 import { generateTokens } from '../utils/jwt.js';
@@ -5,7 +6,7 @@ import { sanitizeUser } from '../utils/helpers.js';
 import { HTTP_STATUS, ROLES } from '../config/constants.js';
 import logger from '../config/logger.js';
 import { generateOTP } from '../utils/generateOTP.js';
-import { sendOTPEmail } from '../utils/sendOTP.js';
+import { sendOTPEmail, sendResetLinkEmail } from '../utils/sendOTP.js';
 import { firebaseAdmin } from '../config/firebaseAdmin.js';
 
 class AuthService {
@@ -44,12 +45,19 @@ class AuthService {
       logger.info('googleLogin: MongoDB user created successfully', { userId: user._id });
     } else {
       logger.info('googleLogin: MongoDB user found', { userId: user._id });
+      const updateData = {};
       if (!user.firebaseUID) {
         logger.info('googleLogin: Linking existing user with Firebase UID');
-        await userRepository.updateById(user._id, {
-          firebaseUID: uid,
-          provider: user.provider === 'local' ? 'local' : 'google'
-        });
+        updateData.firebaseUID = uid;
+      }
+      if (!user.isVerified) {
+        updateData.isVerified = true;
+      }
+      if (picture && !user.profileImage) {
+        updateData.profileImage = picture;
+      }
+      if (Object.keys(updateData).length > 0) {
+        user = await userRepository.updateById(user._id, updateData);
       }
     }
 
@@ -63,7 +71,7 @@ class AuthService {
   }
 
   async register(data) {
-    const { fullName, email, mobile, password, city, state, pincode, country, address, gender, dob, role } = data;
+    const { fullName, email, mobile, password, city, state, pincode, country, address, gender, dob, role, preferredLanguage } = data;
     const normalizedEmail = email.toLowerCase().trim();
 
     const existingEmail = await userRepository.findByEmail(normalizedEmail);
@@ -79,7 +87,8 @@ class AuthService {
     }
 
     const otp = generateOTP();
-    const otpExpires = new Date(Date.now() + 5 * 60 * 1000);
+    const otpHash = crypto.createHash('sha256').update(String(otp)).digest('hex');
+    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     await userRepository.create({
       name: fullName ? fullName.trim() : '',
@@ -93,10 +102,14 @@ class AuthService {
       address: address ? address.trim() : undefined,
       gender: gender ? gender.trim() : undefined,
       dob: dob ? new Date(dob) : undefined,
-      role: role === ROLES.ADMIN ? ROLES.ADMIN : ROLES.FARMER,
+      role: role === ROLES.ADMIN ? ROLES.ADMIN : (role === ROLES.EXPERT ? ROLES.EXPERT : ROLES.FARMER),
+      preferredLanguage: preferredLanguage || 'en',
       isVerified: false,
+      isActive: true,
+      otpHash,
+      otpExpiresAt,
       otp,
-      otpExpires,
+      otpExpires: otpExpiresAt,
       otpLastSent: new Date(),
     });
 
@@ -106,6 +119,7 @@ class AuthService {
       otp,
       subject: 'Verify Your Email',
       template: 'verification',
+      language: preferredLanguage || 'en',
     });
 
     return {
@@ -121,13 +135,23 @@ class AuthService {
       throw new AppError('Invalid credentials', HTTP_STATUS.UNAUTHORIZED);
     }
 
-    if (!user.isVerified) {
-      await this.sendOtp(normalizedEmail, user);
-      return {
-        user: sanitizeUser(user),
-        requiresVerification: true,
-        message: 'Please verify your email before logging in.',
-      };
+    if (user.isActive === false) {
+      throw new AppError('Your account has been deactivated. Please contact support.', HTTP_STATUS.FORBIDDEN, [], 'ACCOUNT_DEACTIVATED');
+    }
+
+    // Admin accounts bypass OTP verification completely
+    if (user.role === ROLES.ADMIN) {
+      if (!user.isVerified) {
+        user.isVerified = true;
+        await user.save();
+      }
+    } else if (!user.isVerified) {
+      try {
+        await this.sendOtp(normalizedEmail, user);
+      } catch (err) {
+        // If rate limited, proceed to reject with verification required
+      }
+      throw new AppError('Please verify your email before logging in.', HTTP_STATUS.FORBIDDEN, [], 'ACCOUNT_NOT_VERIFIED');
     }
 
     const tokens = generateTokens(user._id.toString());
@@ -146,7 +170,7 @@ class AuthService {
 
     const now = Date.now();
     const sentAt = user.otpLastSent ? new Date(user.otpLastSent).getTime() : 0;
-    const cooldownMs = Number(process.env.OTP_RESEND_COOLDOWN_MS) || 60000;
+    const cooldownMs = 60 * 1000; // 60 seconds rate limit per email
 
     if (sentAt && now - sentAt < cooldownMs) {
       const wait = Math.ceil((cooldownMs - (now - sentAt)) / 1000);
@@ -154,11 +178,14 @@ class AuthService {
     }
 
     const otp = generateOTP();
-    const otpExpires = new Date(Date.now() + 5 * 60 * 1000);
+    const otpHash = crypto.createHash('sha256').update(String(otp)).digest('hex');
+    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     await userRepository.updateById(user._id, {
+      otpHash,
+      otpExpiresAt,
       otp,
-      otpExpires,
+      otpExpires: otpExpiresAt,
       otpLastSent: new Date(),
     });
 
@@ -168,6 +195,7 @@ class AuthService {
       otp,
       subject: 'Verify Your Email',
       template: 'verification',
+      language: user.preferredLanguage || 'en',
     });
 
     return { message: 'OTP sent successfully' };
@@ -181,74 +209,111 @@ class AuthService {
       throw new AppError('User not found', HTTP_STATUS.NOT_FOUND);
     }
 
-    if (!otp || !/^\d{6}$/.test(String(otp))) {
+    if (!otp || !/^\d{6}$/.test(String(otp).trim())) {
       throw new AppError('OTP must be a 6-digit number', HTTP_STATUS.BAD_REQUEST);
     }
 
-    if (!user.otp || !user.otpExpires) {
+    const cleanOtp = String(otp).trim();
+    const expiry = user.otpExpiresAt || user.otpExpires;
+    if (!expiry) {
       throw new AppError('No OTP requested', HTTP_STATUS.BAD_REQUEST);
     }
 
-    if (new Date(user.otpExpires) < new Date()) {
-      throw new AppError('OTP expired', HTTP_STATUS.BAD_REQUEST);
+    if (new Date(expiry) < new Date()) {
+      throw new AppError('OTP has expired. Please request a new one.', HTTP_STATUS.BAD_REQUEST);
     }
 
-    if (String(user.otp) !== String(otp)) {
-      throw new AppError('Invalid OTP', HTTP_STATUS.BAD_REQUEST);
+    const providedHash = crypto.createHash('sha256').update(cleanOtp).digest('hex');
+    const isValid = (user.otpHash && user.otpHash === providedHash) || (user.otp && String(user.otp) === cleanOtp);
+
+    if (!isValid) {
+      throw new AppError('Invalid OTP. Please check the code and try again.', HTTP_STATUS.BAD_REQUEST);
     }
 
     const tokens = generateTokens(user._id.toString());
-    await userRepository.updateById(user._id, {
+    const updatedUser = await userRepository.updateById(user._id, {
       isVerified: true,
+      otpHash: null,
+      otpExpiresAt: null,
       otp: null,
       otpExpires: null,
       otpLastSent: null,
       refreshToken: tokens.refreshToken,
     });
 
-    return { user: sanitizeUser(user), ...tokens, message: 'Email verified successfully' };
+    return { user: sanitizeUser(updatedUser || user), ...tokens, message: 'Email verified successfully' };
   }
 
   async resendOtp(email) {
     return this.sendOtp(email);
   }
 
-  async forgotPassword(email) {
+  async forgotPassword({ email, mode = 'link' }) {
     const normalizedEmail = email.toLowerCase().trim();
     const user = await userRepository.findByEmailWithOtp(normalizedEmail);
 
     if (!user) {
-      return { message: 'If an account exists, a password reset OTP has been sent.' };
+      return { message: 'If an account exists with that email, password reset instructions have been sent.' };
     }
 
     const now = Date.now();
     const sentAt = user.otpLastSent ? new Date(user.otpLastSent).getTime() : 0;
-    const cooldownMs = Number(process.env.OTP_RESEND_COOLDOWN_MS) || 60000;
+    const cooldownMs = 60 * 1000;
 
     if (sentAt && now - sentAt < cooldownMs) {
       const wait = Math.ceil((cooldownMs - (now - sentAt)) / 1000);
-      throw new AppError(`Please wait ${wait} seconds before requesting another OTP`, HTTP_STATUS.TOO_MANY_REQUESTS);
+      throw new AppError(`Please wait ${wait} seconds before requesting another reset email`, HTTP_STATUS.TOO_MANY_REQUESTS);
     }
 
-    const otp = generateOTP();
-    const otpExpires = new Date(Date.now() + 5 * 60 * 1000);
+    if (mode === 'otp') {
+      const otp = generateOTP();
+      const otpHash = crypto.createHash('sha256').update(String(otp)).digest('hex');
+      const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    await userRepository.updateById(user._id, {
-      otp: otp,
-      otpExpires,
-      otpLastSent: new Date(),
-    });
+      await userRepository.updateById(user._id, {
+        otpHash,
+        otpExpiresAt,
+        otp,
+        otpExpires: otpExpiresAt,
+        otpLastSent: new Date(),
+      });
 
-    await sendOTPEmail({
-      name: user.name,
-      email: normalizedEmail,
-      otp,
-      subject: 'Reset Your Password',
-      template: 'reset',
-    });
+      await sendOTPEmail({
+        name: user.name,
+        email: normalizedEmail,
+        otp,
+        subject: 'Reset Your Password',
+        template: 'reset',
+        language: user.preferredLanguage || 'en',
+      });
 
-    logger.info(`Password reset OTP sent to ${normalizedEmail}`);
-    return { message: 'If an account exists, a password reset OTP has been sent.' };
+      logger.info(`Password reset OTP sent to ${normalizedEmail}`);
+    } else {
+      // Default: Link-based reset with random 32-byte token (15 min expiry)
+      const rawToken = crypto.randomBytes(32).toString('hex');
+      const resetTokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+      const resetTokenExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+      await userRepository.updateById(user._id, {
+        resetTokenHash,
+        resetTokenExpiresAt,
+        otpLastSent: new Date(),
+      });
+
+      const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+      const resetLink = `${clientUrl}/reset-password/${rawToken}`;
+
+      await sendResetLinkEmail({
+        name: user.name,
+        email: normalizedEmail,
+        resetLink,
+        language: user.preferredLanguage || 'en',
+      });
+
+      logger.info(`Password reset link sent to ${normalizedEmail}`);
+    }
+
+    return { message: 'If an account exists with that email, password reset instructions have been sent.' };
   }
 
   async verifyResetOtp({ email, otp }) {
@@ -259,19 +324,24 @@ class AuthService {
       throw new AppError('User not found', HTTP_STATUS.NOT_FOUND);
     }
 
-    if (!otp || !/^\d{6}$/.test(String(otp))) {
+    const cleanOtp = String(otp || '').trim();
+    if (!cleanOtp || !/^\d{6}$/.test(cleanOtp)) {
       throw new AppError('OTP must be a 6-digit number', HTTP_STATUS.BAD_REQUEST);
     }
 
-    if (!user.otp || !user.otpExpires) {
+    const expiry = user.otpExpiresAt || user.otpExpires;
+    if (!expiry) {
       throw new AppError('No OTP requested', HTTP_STATUS.BAD_REQUEST);
     }
 
-    if (new Date(user.otpExpires) < new Date()) {
-      throw new AppError('OTP expired', HTTP_STATUS.BAD_REQUEST);
+    if (new Date(expiry) < new Date()) {
+      throw new AppError('OTP expired. Please request a new one.', HTTP_STATUS.BAD_REQUEST);
     }
 
-    if (String(user.otp) !== String(otp)) {
+    const providedHash = crypto.createHash('sha256').update(cleanOtp).digest('hex');
+    const isValid = (user.otpHash && user.otpHash === providedHash) || (user.otp && String(user.otp) === cleanOtp);
+
+    if (!isValid) {
       throw new AppError('Invalid OTP', HTTP_STATUS.BAD_REQUEST);
     }
 
@@ -286,19 +356,24 @@ class AuthService {
       throw new AppError('User not found', HTTP_STATUS.NOT_FOUND);
     }
 
-    if (!otp || !/^\d{6}$/.test(String(otp))) {
+    const cleanOtp = String(otp || '').trim();
+    if (!cleanOtp || !/^\d{6}$/.test(cleanOtp)) {
       throw new AppError('OTP must be a 6-digit number', HTTP_STATUS.BAD_REQUEST);
     }
 
-    if (!user.otp || !user.otpExpires) {
+    const expiry = user.otpExpiresAt || user.otpExpires;
+    if (!expiry) {
       throw new AppError('No OTP requested', HTTP_STATUS.BAD_REQUEST);
     }
 
-    if (new Date(user.otpExpires) < new Date()) {
+    if (new Date(expiry) < new Date()) {
       throw new AppError('OTP expired', HTTP_STATUS.BAD_REQUEST);
     }
 
-    if (String(user.otp) !== String(otp)) {
+    const providedHash = crypto.createHash('sha256').update(cleanOtp).digest('hex');
+    const isValid = (user.otpHash && user.otpHash === providedHash) || (user.otp && String(user.otp) === cleanOtp);
+
+    if (!isValid) {
       throw new AppError('Invalid OTP', HTTP_STATUS.BAD_REQUEST);
     }
 
@@ -307,16 +382,41 @@ class AuthService {
     }
 
     user.password = password;
+    user.otpHash = null;
+    user.otpExpiresAt = null;
     user.otp = null;
     user.otpExpires = null;
     user.otpLastSent = null;
-    user.refreshToken = null;
+    user.refreshToken = null; // Invalidate sessions
     await user.save();
 
-    const tokens = generateTokens(user._id.toString());
-    await userRepository.updateById(user._id, { refreshToken: tokens.refreshToken });
+    return { message: 'Password reset successfully. Please log in with your new password.' };
+  }
 
-    return { user: sanitizeUser(user), ...tokens, message: 'Password reset successfully' };
+  async resetPasswordWithToken(rawToken, newPassword) {
+    if (!rawToken) {
+      throw new AppError('Reset token is required', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    if (!newPassword || newPassword.length < 6) {
+      throw new AppError('Password must be at least 6 characters', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const resetTokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const user = await userRepository.findByResetToken(resetTokenHash);
+
+    if (!user) {
+      throw new AppError('Password reset link is invalid or has expired. Please request a new one.', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    user.password = newPassword;
+    user.resetTokenHash = null;
+    user.resetTokenExpiresAt = null;
+    user.refreshToken = null; // Invalidate all existing refresh tokens (force re-login everywhere)
+    await user.save();
+
+    logger.info(`Password successfully reset via link for user ${user.email}`);
+    return { message: 'Password reset successfully. Please log in with your new password.' };
   }
 
   async logout(userId) {
@@ -363,7 +463,7 @@ class AuthService {
   async updateProfile(userId, data) {
     const allowed = [
       'name', 'location', 'farmSize', 'phone', 'preferences', 'profileImage',
-      'city', 'state', 'country', 'pincode', 'address', 'gender', 'dob'
+      'city', 'state', 'country', 'pincode', 'address', 'gender', 'dob', 'preferredLanguage'
     ];
     const update = {};
 
@@ -374,6 +474,28 @@ class AuthService {
     const user = await userRepository.updateById(userId, update);
     if (!user) throw new AppError('User not found', HTTP_STATUS.NOT_FOUND);
     return sanitizeUser(user);
+  }
+
+  async submitFarmerVerification(userId, data, documentUrl) {
+    const user = await userRepository.findById(userId);
+    if (!user) throw new AppError('User not found', HTTP_STATUS.NOT_FOUND);
+
+    const updateData = {
+      verificationStatus: 'pending',
+      verificationDetails: {
+        documentUrl: documentUrl || user.verificationDetails?.documentUrl,
+        documentType: data.documentType || 'Kisan Credit Card / Land Record',
+        farmSize: Number(data.farmSize) || user.farmSize || 0,
+        primaryCrop: data.primaryCrop || '',
+        submittedAt: new Date(),
+        rejectionReason: '',
+      },
+    };
+
+    if (data.farmSize) updateData.farmSize = Number(data.farmSize);
+
+    const updatedUser = await userRepository.updateById(userId, updateData);
+    return sanitizeUser(updatedUser);
   }
 }
 

@@ -24,6 +24,10 @@ export const protect = asyncHandler(async (req, res, next) => {
       throw new AppError('User no longer exists', HTTP_STATUS.UNAUTHORIZED);
     }
 
+    if (user.isActive === false) {
+      throw new AppError('Your account has been deactivated. Please contact support.', HTTP_STATUS.FORBIDDEN);
+    }
+
     req.user = user;
     next();
   } catch (error) {
@@ -31,6 +35,8 @@ export const protect = asyncHandler(async (req, res, next) => {
     throw new AppError('Invalid or expired token. Please login again.', HTTP_STATUS.UNAUTHORIZED);
   }
 });
+
+export const authenticate = protect;
 
 export const authorizeAdmin = (req, res, next) => {
   if (!req.user || req.user.role !== 'admin') {
@@ -47,6 +53,8 @@ export const authorize = (...roles) => {
     next();
   };
 };
+
+export const requireRole = authorize;
 
 export const optionalAuth = asyncHandler(async (req, res, next) => {
   let token;

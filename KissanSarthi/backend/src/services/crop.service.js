@@ -1,118 +1,170 @@
 import cropRepository from '../repositories/crop.repository.js';
+import geminiService from './gemini.service.js';
+import logger from '../config/logger.js';
 
-const CROP_RULES = {
-  kharif: {
-    loamy: {
-      recommendedCrop: 'Rice (Paddy)',
-      variety: 'IR-64, Swarna',
-      yield: '5-6 ton/ha',
-      confidence: 92,
-      time: '110-130 days',
-      tips: ['Transplant in flooded fields', 'Apply 120kg N/ha', 'Control weevils with Chlorpyrifos'],
-    },
-    sandy: {
-      recommendedCrop: 'Groundnut',
-      variety: 'TG-26, JL-24',
-      yield: '2-3 ton/ha',
-      confidence: 88,
-      time: '100-110 days',
-      tips: ['Sandy loam is ideal', 'Apply gypsum 400kg/ha', 'Inoculate seeds with Rhizobium'],
-    },
-    clay: {
-      recommendedCrop: 'Cotton',
-      variety: 'H-777, RCH-2',
-      yield: '3-4 ton/ha',
-      confidence: 85,
-      time: '150-180 days',
-      tips: ['Ensure proper drainage', 'Apply balanced NPK', 'Monitor for bollworm'],
-    },
+const CROP_DATABASE = [
+  {
+    crop: 'Rice (Paddy)',
+    variety: 'IR-64, Swarna, Basmati-370',
+    seasons: ['kharif'],
+    soils: ['loamy', 'clay'],
+    tempRange: [20, 38],
+    phRange: [5.5, 7.5],
+    rainfallRange: [150, 350],
+    nRange: [80, 150],
+    yieldEst: '5.5 ton/ha',
+    time: '120-135 days',
+    tips: ['Maintain 3-5cm water level during tillering', 'Apply Nitrogen in 3 split doses', 'Watch for leaf blast disease'],
   },
-  rabi: {
-    loamy: {
-      recommendedCrop: 'Wheat',
-      variety: 'HD-2967, PBW-343',
-      yield: '4-5 ton/ha',
-      confidence: 95,
-      time: '120-150 days',
-      tips: ['Sow Oct-Nov', 'First irrigation at 21 days', 'Apply 120kg N/ha in splits'],
-    },
-    sandy: {
-      recommendedCrop: 'Mustard',
-      variety: 'Pusa Bold, RH-749',
-      yield: '1.5-2 ton/ha',
-      confidence: 87,
-      time: '110-130 days',
-      tips: ['Sow in rows 30cm apart', 'Apply sulphur 20kg/ha', 'Irrigate at flowering'],
-    },
-    clay: {
-      recommendedCrop: 'Barley',
-      variety: 'RD-2786, BH-902',
-      yield: '3-4 ton/ha',
-      confidence: 90,
-      time: '120-140 days',
-      tips: ['Sow early Nov', 'Light irrigation at crown root', 'Watch for rust disease'],
-    },
+  {
+    crop: 'Wheat',
+    variety: 'HD-2967, PBW-343, WH-1105',
+    seasons: ['rabi'],
+    soils: ['loamy', 'sandy loam'],
+    tempRange: [12, 28],
+    phRange: [6.0, 7.5],
+    rainfallRange: [50, 150],
+    nRange: [100, 140],
+    yieldEst: '4.8 ton/ha',
+    time: '120-150 days',
+    tips: ['First irrigation at Crown Root Initiation (21 DAS)', 'Apply Zinc Sulphate @ 25kg/ha', 'Ensure weed-free field for first 45 days'],
   },
-  zaid: {
-    loamy: {
-      recommendedCrop: 'Maize',
-      variety: 'DHM-117, NK-6240',
-      yield: '4-5 ton/ha',
-      confidence: 89,
-      time: '90-110 days',
-      tips: ['Ensure adequate irrigation', 'Apply 150kg N/ha', 'Control stem borer early'],
-    },
-    sandy: {
-      recommendedCrop: 'Watermelon',
-      variety: 'Sugar Baby, Asahi',
-      yield: '20-25 ton/ha',
-      confidence: 84,
-      time: '80-90 days',
-      tips: ['Drip irrigation recommended', 'Mulch to retain moisture', 'Harvest at maturity'],
-    },
-    clay: {
-      recommendedCrop: 'Moong (Green Gram)',
-      variety: 'Pusa Vishal, K-851',
-      yield: '0.8-1 ton/ha',
-      confidence: 86,
-      time: '60-70 days',
-      tips: ['Short duration crop', 'Rhizobium inoculation', 'Minimal irrigation needed'],
-    },
+  {
+    crop: 'Mustard',
+    variety: 'Pusa Bold, RH-749, Giriraj',
+    seasons: ['rabi'],
+    soils: ['sandy', 'loamy'],
+    tempRange: [15, 28],
+    phRange: [6.0, 8.0],
+    rainfallRange: [25, 100],
+    nRange: [40, 80],
+    yieldEst: '2.2 ton/ha',
+    time: '110-130 days',
+    tips: ['Apply Sulphur @ 20kg/ha for high oil content', 'Protect from Aphids using Neem oil spray', 'Irrigate at flowering and pod formation'],
   },
-};
+  {
+    crop: 'Maize (Corn)',
+    variety: 'DHM-117, NK-6240, HQPM-1',
+    seasons: ['kharif', 'zaid'],
+    soils: ['loamy', 'sandy'],
+    tempRange: [18, 35],
+    phRange: [5.8, 7.8],
+    rainfallRange: [80, 200],
+    nRange: [100, 160],
+    yieldEst: '5.0 ton/ha',
+    time: '90-110 days',
+    tips: ['Ensure good field drainage', 'Top dress Urea at knee-high stage', 'Monitor for Fall Armyworm'],
+  },
+  {
+    crop: 'Groundnut',
+    variety: 'TG-26, JL-24, Kadiri-6',
+    seasons: ['kharif', 'zaid'],
+    soils: ['sandy', 'loamy'],
+    tempRange: [22, 35],
+    phRange: [6.0, 7.5],
+    rainfallRange: [50, 125],
+    nRange: [20, 40],
+    yieldEst: '2.8 ton/ha',
+    time: '100-115 days',
+    tips: ['Apply Gypsum @ 400kg/ha at pegging stage', 'Inoculate seed with Rhizobium culture', 'Avoid waterlogging'],
+  },
+];
 
 class CropService {
-  recommend({ soilType, season, nitrogen, temperature, rainfall, userId }) {
-    const base = CROP_RULES[season]?.[soilType] || CROP_RULES.kharif.loamy;
+  async recommend({ soilType, season, nitrogen = 80, temperature = 25, rainfall = 120, ph = 6.8, location, userId }) {
+    const cleanSeason = (season || 'kharif').toLowerCase();
+    const cleanSoil = (soilType || 'loamy').toLowerCase();
 
-    let confidence = base.confidence;
-    if (temperature >= 15 && temperature <= 35) confidence += 2;
-    if (rainfall >= 100 && rainfall <= 300) confidence += 2;
-    if (nitrogen >= 40 && nitrogen <= 120) confidence += 1;
-    confidence = Math.min(confidence, 99);
+    // 1. Primary: Use Gemini AI Engine for dynamic ICAR-grounded recommendation
+    try {
+      const aiResult = await geminiService.generateCropRecommendation({
+        soilType: cleanSoil,
+        season: cleanSeason,
+        nitrogen,
+        temperature,
+        rainfall,
+        ph,
+        location,
+      });
 
-    const result = {
-      recommendedCrop: base.recommendedCrop,
-      variety: base.variety,
-      yield: base.yield,
+      if (aiResult && aiResult.recommendedCrop) {
+        const saved = await cropRepository.create({
+          user: userId,
+          recommendedCrop: aiResult.recommendedCrop,
+          variety: aiResult.variety,
+          yield: aiResult.yield,
+          confidence: aiResult.confidence || 92,
+          time: aiResult.time,
+          tips: aiResult.tips || [],
+          soilType: cleanSoil,
+          season: cleanSeason,
+          nitrogen,
+          temperature,
+          rainfall,
+        });
+
+        return {
+          crop: saved.recommendedCrop,
+          recommendedCrop: saved.recommendedCrop,
+          variety: saved.variety,
+          yield: saved.yield,
+          confidence: saved.confidence,
+          time: saved.time,
+          tips: saved.tips,
+          id: saved._id,
+        };
+      }
+    } catch (err) {
+      logger.warn(`Gemini Crop recommendation error, engaging agronomic fallback: ${err.message}`);
+    }
+
+    // 2. Secondary: Dynamic Agronomic Rule Engine
+    let bestMatch = CROP_DATABASE[0];
+    let highestScore = -1;
+
+    for (const crop of CROP_DATABASE) {
+      let score = 0;
+      if (crop.seasons.includes(cleanSeason)) score += 30;
+      if (crop.soils.some((s) => cleanSoil.includes(s) || s.includes(cleanSoil))) score += 25;
+      if (temperature >= crop.tempRange[0] && temperature <= crop.tempRange[1]) score += 15;
+      if (ph >= crop.phRange[0] && ph <= crop.phRange[1]) score += 15;
+      if (rainfall >= crop.rainfallRange[0] && rainfall <= crop.rainfallRange[1]) score += 15;
+
+      if (score > highestScore) {
+        highestScore = score;
+        bestMatch = crop;
+      }
+    }
+
+    const confidence = Math.min(Math.max(highestScore, 75), 95);
+
+    const recommendationData = {
+      user: userId,
+      recommendedCrop: bestMatch.crop,
+      variety: bestMatch.variety,
+      yield: bestMatch.yieldEst,
       confidence,
-      tips: base.tips,
-      soilType,
-      season,
+      time: bestMatch.time,
+      tips: bestMatch.tips,
+      soilType: cleanSoil,
+      season: cleanSeason,
       nitrogen,
       temperature,
       rainfall,
     };
 
-    return cropRepository.create({ ...result, user: userId }).then((saved) => ({
+    const saved = await cropRepository.create(recommendationData);
+
+    return {
       crop: saved.recommendedCrop,
+      recommendedCrop: saved.recommendedCrop,
       variety: saved.variety,
       yield: saved.yield,
       confidence: saved.confidence,
-      time: base.time,
+      time: bestMatch.time,
       tips: saved.tips,
       id: saved._id,
-    }));
+    };
   }
 
   getHistory(userId) {

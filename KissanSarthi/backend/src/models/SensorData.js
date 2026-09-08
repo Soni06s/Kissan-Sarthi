@@ -5,6 +5,8 @@ const sensorDataSchema = new mongoose.Schema(
     temperature: { type: Number, required: true },
     soilMoisture: { type: Number, required: true, min: 0, max: 100 },
     nitrogen: { type: Number, default: 0 },
+    phosphorus: { type: Number, default: 0 },
+    potassium: { type: Number, default: 0 },
     ph: { type: Number, default: 7, min: 0, max: 14 },
     humidity: { type: Number, default: 0, min: 0, max: 100 },
     nodeId: { type: String, required: true, trim: true },

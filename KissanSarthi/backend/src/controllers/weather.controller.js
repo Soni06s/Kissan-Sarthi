@@ -4,7 +4,9 @@ import { sendSuccess } from '../utils/apiResponse.js';
 import { HTTP_STATUS } from '../config/constants.js';
 
 export const getWeather = asyncHandler(async (req, res) => {
-  const location = req.query.location || req.user?.location || 'Bari Brahmana, J&K';
+  const userLoc = req.user?.city ? `${req.user.city}${req.user.state ? `, ${req.user.state}` : ''}` : req.user?.location;
+  const rawLoc = req.query.location || req.query.city || req.query.q || userLoc || 'Vadodara, Gujarat';
+  const location = typeof rawLoc === 'string' && rawLoc.trim() ? rawLoc.trim() : 'Vadodara, Gujarat';
   const data = await weatherService.getForecast(location);
   sendSuccess(res, 'Weather forecast fetched', data);
 });

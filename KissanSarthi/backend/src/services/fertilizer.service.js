@@ -1,118 +1,112 @@
 import fertilizerRepository from '../repositories/fertilizer.repository.js';
+import geminiService from './gemini.service.js';
+import logger from '../config/logger.js';
 
-const FERTILIZER_RULES = {
-  wheat: {
-    sowing: {
-      primary: 'DAP (18-46-0)',
-      dose: '100 kg/ha',
-      secondary: 'MOP 40 kg/ha',
-      schedule: 'Apply at sowing time in furrows',
-      cost: '₹3,200/acre',
-      npk: [18, 46, 0],
-    },
-    vegetative: {
-      primary: 'Urea (46% N)',
-      dose: '60 kg/ha',
-      secondary: 'Zinc Sulphate 25 kg/ha',
-      schedule: 'Top dressing at 21-25 DAS',
-      cost: '₹900/acre',
-      npk: [46, 0, 0],
-    },
-    flowering: {
-      primary: 'Urea (46% N)',
-      dose: '40 kg/ha',
-      secondary: 'Boron 5 kg/ha',
-      schedule: 'Apply at booting/flowering stage',
-      cost: '₹700/acre',
-      npk: [46, 0, 0],
-    },
-  },
-  rice: {
-    sowing: {
-      primary: 'Complex 14-35-14',
-      dose: '150 kg/ha',
-      secondary: 'Urea 80 kg/ha',
-      schedule: 'Split: 50% at transplanting, 50% at tillering',
-      cost: '₹4,500/acre',
-      npk: [14, 35, 14],
-    },
-    vegetative: {
-      primary: 'Urea (46% N)',
-      dose: '100 kg/ha',
-      secondary: 'Potash 40 kg/ha',
-      schedule: 'Apply at active tillering stage',
-      cost: '₹1,200/acre',
-      npk: [46, 0, 10],
-    },
-    flowering: {
-      primary: 'Urea (46% N)',
-      dose: '50 kg/ha',
-      secondary: 'Zinc Sulphate 25 kg/ha',
-      schedule: 'Apply at panicle initiation',
-      cost: '₹800/acre',
-      npk: [46, 0, 0],
-    },
-  },
-  maize: {
-    sowing: {
-      primary: 'DAP (18-46-0)',
-      dose: '120 kg/ha',
-      secondary: 'Urea 60 kg/ha',
-      schedule: 'Basal application at sowing',
-      cost: '₹3,800/acre',
-      npk: [18, 46, 0],
-    },
-    vegetative: {
-      primary: 'Urea (46% N)',
-      dose: '80 kg/ha',
-      secondary: 'MOP 30 kg/ha',
-      schedule: 'Apply at knee-high stage',
-      cost: '₹1,100/acre',
-      npk: [46, 0, 0],
-    },
-    flowering: {
-      primary: 'Urea (46% N)',
-      dose: '40 kg/ha',
-      secondary: 'Micronutrient mix',
-      schedule: 'Apply at tasseling',
-      cost: '₹650/acre',
-      npk: [46, 0, 0],
-    },
-  },
+const CROP_TARGET_NPK = {
+  wheat: { n: 120, p: 60, k: 40 },
+  rice: { n: 100, p: 50, k: 50 },
+  maize: { n: 150, p: 75, k: 50 },
+  mustard: { n: 80, p: 40, k: 40 },
+  potato: { n: 180, p: 100, k: 120 },
 };
 
-const DEFICIENCY_ADJUSTMENTS = {
-  nitrogen: { primary: 'Urea (46% N)', doseBoost: '20%' },
-  phosphorus: { primary: 'DAP (18-46-0)', doseBoost: '15%' },
-  potassium: { primary: 'MOP (0-0-60)', doseBoost: '15%' },
+const STAGE_DISTRIBUTION = {
+  sowing: { n: 0.25, p: 1.0, k: 0.5 },
+  vegetative: { n: 0.5, p: 0.0, k: 0.25 },
+  flowering: { n: 0.25, p: 0.0, k: 0.25 },
 };
 
 class FertilizerService {
-  calculate({ crop, stage, soilPH, deficiency, userId }) {
-    const base = FERTILIZER_RULES[crop]?.[stage] || FERTILIZER_RULES.wheat.sowing;
-    const adjustment = DEFICIENCY_ADJUSTMENTS[deficiency];
+  async calculate({ crop = 'wheat', stage = 'sowing', soilPH = 6.8, deficiency = 'none', targetNPK = null, location, userId }) {
+    const cleanCrop = crop.toLowerCase();
+    const cleanStage = stage.toLowerCase();
+    const ph = parseFloat(soilPH) || 6.8;
+
+    const baseNPK = targetNPK || CROP_TARGET_NPK[cleanCrop] || CROP_TARGET_NPK.wheat;
+    const distribution = STAGE_DISTRIBUTION[cleanStage] || STAGE_DISTRIBUTION.sowing;
+
+    // Deficit multipliers
+    let nMult = 1.0;
+    let pMult = 1.0;
+    let kMult = 1.0;
+
+    if (deficiency === 'nitrogen') nMult = 1.25;
+    if (deficiency === 'phosphorus') pMult = 1.2;
+    if (deficiency === 'potassium') kMult = 1.2;
+
+    const reqN = Math.round(baseNPK.n * distribution.n * nMult);
+    const reqP = Math.round(baseNPK.p * distribution.p * pMult);
+    const reqK = Math.round(baseNPK.k * distribution.k * kMult);
+
+    // Exact fertilizer weights (Urea = 46% N, DAP = 18% N & 46% P, MOP = 60% K)
+    const dapKg = Math.round((reqP / 0.46) * 0.4); // acre basis
+    const nFromDAP = Math.round(dapKg * 0.18);
+    const remN = Math.max(reqN - nFromDAP, 0);
+    const ureaKg = Math.round((remN / 0.46) * 0.4);
+    const mopKg = Math.round(((reqK / 0.6) * 0.4));
+
+    const totalCost = Math.round(ureaKg * 7 + dapKg * 27 + mopKg * 34);
+
+    let soilPHNote = 'Soil pH is in optimal range (6.2 - 7.5).';
+    if (ph < 6.0) {
+      soilPHNote = `Soil pH (${ph}) is acidic. Apply Agricultural Lime (Calcium Carbonate) @ 200 kg/acre.`;
+    } else if (ph > 7.8) {
+      soilPHNote = `Soil pH (${ph}) is alkaline. Apply Gypsum @ 150 kg/acre or Sulphur to improve nutrient availability.`;
+    }
+
+    let defaultSchedule = cleanStage === 'sowing'
+      ? 'Apply full DAP and MOP at sowing in furrows. Apply 1/3rd Urea at sowing.'
+      : cleanStage === 'vegetative'
+        ? 'Top dress remaining Urea after irrigation at 21-25 days.'
+        : 'Apply final split of Urea during booting/flowering stage.';
+
+    // Enhance schedule and agronomic context with Gemini AI
+    try {
+      const aiExplanation = await geminiService.explainFertilizerPlan({
+        crop: cleanCrop,
+        stage: cleanStage,
+        soilPH: ph,
+        deficiency,
+        reqN,
+        reqP,
+        reqK,
+        ureaKg,
+        dapKg,
+        mopKg,
+        location,
+      });
+
+      if (aiExplanation) {
+        if (aiExplanation.schedule) defaultSchedule = aiExplanation.schedule;
+        if (aiExplanation.soilPHNote) soilPHNote = aiExplanation.soilPHNote;
+      }
+    } catch (err) {
+      logger.warn(`Gemini fertilizer contextualization warning: ${err.message}`);
+    }
 
     const recommendation = {
-      primary: adjustment?.primary || base.primary,
-      dose: base.dose,
-      secondary: base.secondary,
-      schedule: base.schedule,
-      cost: base.cost,
-      npk: base.npk,
-      soilPHNote:
-        soilPH < 6
-          ? 'Soil is acidic. Consider lime application.'
-          : soilPH > 7.5
-            ? 'Soil is alkaline. Consider gypsum application.'
-            : 'Soil pH is in optimal range.',
+      primary: `Urea (${ureaKg} kg/acre) + DAP (${dapKg} kg/acre)`,
+      dose: `Urea: ${ureaKg} kg | DAP: ${dapKg} kg | MOP: ${mopKg} kg per acre`,
+      secondary: mopKg > 0 ? `Muriate of Potash (MOP): ${mopKg} kg/acre` : 'Zinc Sulphate: 10 kg/acre',
+      schedule: defaultSchedule,
+      cost: `₹${totalCost.toLocaleString('en-IN')}/acre`,
+      npk: [reqN, reqP, reqK],
+      soilPHNote,
     };
 
-    return fertilizerRepository
-      .create({ user: userId, crop, stage, soilPH, deficiency, recommendation })
-      .then((saved) => ({
-        ...recommendation,
-        id: saved._id,
-      }));
+    const saved = await fertilizerRepository.create({
+      user: userId,
+      crop: cleanCrop,
+      stage: cleanStage,
+      soilPH: ph,
+      deficiency,
+      recommendation,
+    });
+
+    return {
+      ...recommendation,
+      id: saved._id,
+    };
   }
 
   getHistory(userId) {

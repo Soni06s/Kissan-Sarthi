@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { authAPI } from '../../services/api';
 import { COLORS } from '../../constants/theme';
 import { Icon } from '../../components/common/Icon';
@@ -7,16 +7,25 @@ import toast from 'react-hot-toast';
 
 const ResetPassword = () => {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ email: localStorage.getItem('resetEmail') || '', otp: '', password: '', confirmPassword: '' });
+  const { token } = useParams();
+  const isLinkFlow = Boolean(token);
+
+  const [form, setForm] = useState({
+    email: localStorage.getItem('resetEmail') || '',
+    otp: '',
+    password: '',
+    confirmPassword: ''
+  });
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useEffect(() => {
-    if (!form.email) {
+    if (!isLinkFlow && !form.email) {
+      toast.error('Please request a password reset first');
       navigate('/forgot-password');
     }
-  }, [form.email, navigate]);
+  }, [isLinkFlow, form.email, navigate]);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -32,28 +41,38 @@ const ResetPassword = () => {
       toast.error('Password must be at least 6 characters.');
       return;
     }
-    
-    // Auto populate OTP if missing but we're in this step (though normally we'd need it from previous step, assuming backend requires it)
-    // Actually the backend endpoint requires email, otp, password. We need to pass the OTP from the previous step.
-    // Wait, the previous step just verified the OTP, but didn't pass it here. Let's prompt for OTP if empty, or better, the user should provide it.
-    // Since this is ResetPassword, let's keep OTP input hidden or if required, show it.
-    if (!form.otp) {
-      toast.error('Please enter the OTP you received.');
-      return;
-    }
 
     setLoading(true);
 
     try {
-      const { data } = await authAPI.resetPassword(form);
-      localStorage.setItem('accessToken', data.data.accessToken);
-      localStorage.setItem('user', JSON.stringify(data.data.user));
-      localStorage.removeItem('resetEmail');
-      localStorage.removeItem('pendingEmail');
-      toast.success('Password reset successfully! Logging you in...');
-      navigate('/');
+      if (isLinkFlow) {
+        await authAPI.resetPasswordWithToken(token, form.password);
+        toast.success('Password reset successfully! Please log in with your new password.');
+        localStorage.removeItem('resetEmail');
+        navigate('/login');
+      } else {
+        if (!form.otp) {
+          toast.error('Please enter the 6-digit OTP code.');
+          setLoading(false);
+          return;
+        }
+        const { data } = await authAPI.resetPassword({
+          email: form.email,
+          otp: form.otp,
+          password: form.password
+        });
+        if (data.data?.accessToken) {
+          localStorage.setItem('accessToken', data.data.accessToken);
+        }
+        if (data.data?.user) {
+          localStorage.setItem('user', JSON.stringify(data.data.user));
+        }
+        localStorage.removeItem('resetEmail');
+        toast.success('Password reset successfully! Logging you in...');
+        navigate('/');
+      }
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Password reset failed.');
+      toast.error(err.response?.data?.message || 'Password reset failed. Please request a new link/code.');
     } finally {
       setLoading(false);
     }
@@ -66,41 +85,74 @@ const ResetPassword = () => {
           <Icon name="lock" size={24} color={COLORS.primary} />
         </div>
         <h2 style={styles.title}>Create New Password</h2>
-        <p style={styles.subtitle}>Your new password must be different from previously used passwords.</p>
+        <p style={styles.subtitle}>
+          {isLinkFlow
+            ? 'Enter and confirm your new password below.'
+            : 'Enter the verification code sent to your email and your new password.'}
+        </p>
 
         <form onSubmit={handleSubmit} style={styles.form}>
-          <div style={styles.inputGroup}>
-            <label style={styles.label}>Email Address</label>
-            <div style={styles.inputWrapper}>
-              <div style={styles.inputIcon}><Icon name="mail" size={18} /></div>
-              <input name="email" type="email" value={form.email} readOnly style={{...styles.input, opacity: 0.7}} />
-            </div>
-          </div>
-          
-          <div style={styles.inputGroup}>
-            <label style={styles.label}>Verification Code (OTP)</label>
-            <div style={styles.inputWrapper}>
-              <div style={styles.inputIcon}><Icon name="check-circle" size={18} /></div>
-              <input name="otp" type="text" placeholder="Enter 6-digit code" value={form.otp} onChange={handleChange} maxLength={6} required style={styles.input} />
-            </div>
-          </div>
+          {!isLinkFlow && (
+            <>
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>Email Address</label>
+                <div style={styles.inputWrapper}>
+                  <div style={styles.inputIcon}><Icon name="mail" size={18} /></div>
+                  <input name="email" type="email" value={form.email} readOnly style={{...styles.input, opacity: 0.7}} />
+                </div>
+              </div>
+
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>Verification Code (OTP)</label>
+                <div style={styles.inputWrapper}>
+                  <div style={styles.inputIcon}><Icon name="check-circle" size={18} /></div>
+                  <input
+                    name="otp"
+                    type="text"
+                    placeholder="Enter 6-digit code"
+                    value={form.otp}
+                    onChange={handleChange}
+                    maxLength={6}
+                    required
+                    style={styles.input}
+                  />
+                </div>
+              </div>
+            </>
+          )}
 
           <div style={styles.inputGroup}>
             <label style={styles.label}>New Password</label>
             <div style={styles.inputWrapper}>
               <div style={styles.inputIcon}><Icon name="lock" size={18} /></div>
-              <input name="password" type={showPassword ? 'text' : 'password'} placeholder="Must be at least 6 characters" value={form.password} onChange={handleChange} required style={{...styles.input, paddingRight: 42}} />
+              <input
+                name="password"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Must be at least 6 characters"
+                value={form.password}
+                onChange={handleChange}
+                required
+                style={{...styles.input, paddingRight: 42}}
+              />
               <button type="button" onClick={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
                 <Icon name={showPassword ? "eye-off" : "eye"} size={18} />
               </button>
             </div>
           </div>
-          
+
           <div style={styles.inputGroup}>
             <label style={styles.label}>Confirm New Password</label>
             <div style={styles.inputWrapper}>
               <div style={styles.inputIcon}><Icon name="lock" size={18} /></div>
-              <input name="confirmPassword" type={showConfirmPassword ? 'text' : 'password'} placeholder="Confirm your new password" value={form.confirmPassword} onChange={handleChange} required style={{...styles.input, paddingRight: 42}} />
+              <input
+                name="confirmPassword"
+                type={showConfirmPassword ? 'text' : 'password'}
+                placeholder="Confirm your new password"
+                value={form.confirmPassword}
+                onChange={handleChange}
+                required
+                style={{...styles.input, paddingRight: 42}}
+              />
               <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.eyeBtn}>
                 <Icon name={showConfirmPassword ? "eye-off" : "eye"} size={18} />
               </button>

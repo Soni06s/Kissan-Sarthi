@@ -94,7 +94,11 @@ export const PostCard = ({ post, onComment, onEdit, onDelete, onOpenDetails, onM
           <div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <span style={{ fontWeight: 700, fontSize: 15, color: COLORS.text }}>{post.user}</span>
-              {post.verified && <Icon name="check" size={14} color={COLORS.primary} />}
+              {post.verified && (
+                <span title="Verified Farmer" style={{ color: '#2E7D32', display: 'inline-flex', alignItems: 'center' }}>
+                  <Icon name="badgeCheck" size={16} />
+                </span>
+              )}
             </div>
             <div style={{ fontSize: 12, color: COLORS.textMuted }}>
               📍 {post.district || 'India'} • {post.time}
@@ -111,8 +115,14 @@ export const PostCard = ({ post, onComment, onEdit, onDelete, onOpenDetails, onM
               {(isOwner || isAdmin) && <button onClick={() => { onEdit?.(post); setMenuOpen(false); }} style={menuButtonStyle}>Edit Post</button>}
               {isAdmin && <button onClick={() => { onModerate?.(post, { pinned: !post.pinned }); setMenuOpen(false); }} style={menuButtonStyle}>{post.pinned ? 'Unpin Post' : 'Pin Post'}</button>}
               {isAdmin && <button onClick={() => { onModerate?.(post, { featured: !post.featured }); setMenuOpen(false); }} style={menuButtonStyle}>{post.featured ? 'Unfeature Post' : 'Feature Post'}</button>}
-              {isAdmin && <button onClick={() => { onModerate?.(post, { status: 'hidden' }); setMenuOpen(false); }} style={menuButtonStyle}>Hide Post</button>}
-              {(isOwner || isAdmin) && <button onClick={() => { onDelete?.(post); setMenuOpen(false); }} style={{ ...menuButtonStyle, color: COLORS.red }}>Delete Post</button>}
+              {(isOwner || isAdmin) && (
+                <button
+                  onClick={() => { onDelete?.(post); setMenuOpen(false); }}
+                  style={{ ...menuButtonStyle, color: COLORS.red }}
+                >
+                  {isAdmin && !isOwner ? '🗑️ Delete Post (Admin)' : 'Delete Post'}
+                </button>
+              )}
               <button onClick={handleReport} style={menuButtonStyle}>Report</button>
             </div>
           )}

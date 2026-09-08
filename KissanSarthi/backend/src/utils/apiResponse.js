@@ -4,6 +4,10 @@ export const sendSuccess = (res, message = 'Success', data = {}, status = HTTP_S
   return res.status(status).json({ success: true, message, data });
 };
 
+export const sendCreated = (res, message = 'Created', data = {}) => {
+  return sendSuccess(res, message, data, HTTP_STATUS.CREATED);
+};
+
 export const sendError = (res, message = 'Error', errors = [], status = HTTP_STATUS.BAD_REQUEST) => {
   return res.status(status).json({ success: false, message, errors });
 };

@@ -7,9 +7,11 @@ import { TrendingSidebar } from "../components/community/TrendingSidebar";
 import { CreatePostModal } from "../components/community/CreatePostModal";
 import { CommentSection } from "../components/community/CommentSection";
 import { Skeleton } from "../components/common/Skeleton";
+import EmptyState from "../components/common/EmptyState";
 import { communityAPI } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useTranslation } from "react-i18next";
+import { useSocket } from "../hooks/useSocket";
 
 const CATEGORY_ICONS = {
   'General Discussion': 'community',
@@ -36,15 +38,63 @@ const CommunityPage = () => {
   const [editingPost, setEditingPost] = useState(null);
   const [selectedPost, setSelectedPost] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [deleteModal, setDeleteModal] = useState({ isOpen: false, post: null, reason: 'Violated community guidelines' });
+  const [deleting, setDeleting] = useState(false);
   const [toast, setToast] = useState('');
   const [feedMode, setFeedMode] = useState('newest');
   const [activeCategory, setActiveCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedComments, setExpandedComments] = useState({});
+  const [trendingTags, setTrendingTags] = useState(['WheatHarvest', 'OrganicFarming', 'MSPUpdates', 'DripAgri']);
+  const [topFarmers, setTopFarmers] = useState([
+    { name: "Harpreet Singh", state: "Punjab", totalPosts: 14 },
+    { name: "Priya Patel", state: "Gujarat", totalPosts: 11 },
+    { name: "Ramesh Sharma", state: "Haryana", totalPosts: 9 }
+  ]);
+
+  const { socket } = useSocket();
+
+  useEffect(() => {
+    const fetchSidebarData = async () => {
+      try {
+        const res = await communityAPI.getTrending();
+        const data = res.data?.data;
+        if (data?.trendingTags?.length) setTrendingTags(data.trendingTags);
+        if (data?.topFarmers?.length) setTopFarmers(data.topFarmers);
+      } catch (err) {
+        console.warn('Could not load trending community sidebar', err);
+      }
+    };
+    fetchSidebarData();
+  }, []);
 
   useEffect(() => {
     fetchPosts(1, true);
   }, [activeCategory, searchQuery, feedMode]);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleNewPost = (newPost) => {
+      if (!newPost) return;
+      setPosts((prev) => [newPost, ...prev.filter((p) => (p.id || p._id) !== (newPost.id || newPost._id))]);
+    };
+
+    const handlePostLiked = ({ postId, likes }) => {
+      if (!postId) return;
+      setPosts((prev) =>
+        prev.map((p) => ((p.id || p._id) === postId ? { ...p, likes: typeof likes === "number" ? likes : p.likes } : p))
+      );
+    };
+
+    socket.on("post_new", handleNewPost);
+    socket.on("post_liked", handlePostLiked);
+
+    return () => {
+      socket.off("post_new", handleNewPost);
+      socket.off("post_liked", handlePostLiked);
+    };
+  }, [socket]);
 
   const fetchPosts = async (pageNum, reset = false) => {
     try {
@@ -115,17 +165,30 @@ const CommunityPage = () => {
     setIsModalOpen(true);
   };
 
-  const handleDelete = async (post) => {
-    const confirmed = window.confirm('Delete this post?\n\nThis action cannot be undone.');
-    if (!confirmed) return;
+  const handleDelete = (post) => {
+    setDeleteModal({
+      isOpen: true,
+      post,
+      reason: user?.role === 'admin' ? 'Violated community guidelines' : '',
+    });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteModal.post) return;
+    const post = deleteModal.post;
+    const reason = deleteModal.reason;
+    setDeleting(true);
     try {
-      await communityAPI.deletePost(post.id);
+      await communityAPI.deletePost(post.id, { reason });
       setPosts(prev => prev.filter(item => item.id !== post.id));
       setStats(prev => ({ ...prev, totalPosts: Math.max((prev.totalPosts || 1) - 1, 0) }));
-      showToast('Post deleted');
+      showToast(user?.role === 'admin' ? 'Post deleted (Moderation action logged)' : 'Post deleted');
+      setDeleteModal({ isOpen: false, post: null, reason: '' });
     } catch (err) {
       console.error('Failed to delete post:', err);
       showToast('Could not delete post');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -285,17 +348,14 @@ const CommunityPage = () => {
           )}
 
           {!loading && posts.length === 0 && (
-            <Card style={{ textAlign: 'center', padding: 60, color: COLORS.textMuted }}>
-              <Icon name="community" size={48} color={COLORS.border} />
-              <h3 style={{ color: COLORS.text, marginTop: 16 }}>No posts found</h3>
-              <p>Be the first to start a conversation in this category.</p>
-              <button 
-                onClick={() => { setEditingPost(null); setIsModalOpen(true); }}
-                style={{ marginTop: 16, background: COLORS.primary, color: "white", border: "none", borderRadius: 12, padding: "10px 24px", cursor: "pointer", fontWeight: 700 }}
-              >
-                Create Post
-              </button>
-            </Card>
+            <EmptyState
+              type="community"
+              title="No Discussions Found in this Channel"
+              subtitle="Be the first farmer to share advice, ask questions, or discuss field challenges with the community."
+              hint="Farmer-to-farmer knowledge exchange • Verified agronomist answers"
+              actionLabel="+ Start a Discussion"
+              onAction={() => { setEditingPost(null); setIsModalOpen(true); }}
+            />
           )}
 
           {!loading && hasMore && posts.length > 0 && (
@@ -326,12 +386,8 @@ const CommunityPage = () => {
             </Card>
           )}
           <TrendingSidebar 
-            trendingTags={['WheatDisease', 'OrganicFarming', 'MSP', 'DroneAgri']} 
-            topFarmers={[
-              { name: "Ramesh Yadav", state: "UP", totalPosts: 45 },
-              { name: "Priya Patel", state: "Gujarat", totalPosts: 38 },
-              { name: "Manjunath Gowda", state: "Karnataka", totalPosts: 29 }
-            ]}
+            trendingTags={trendingTags} 
+            topFarmers={topFarmers}
           />
         </div>
       </div>
@@ -343,6 +399,86 @@ const CommunityPage = () => {
         onPostUpdated={handlePostUpdated}
         editingPost={editingPost}
       />
+      {/* Delete Confirmation Modal */}
+      {deleteModal.isOpen && deleteModal.post && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(10, 30, 10, 0.55)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ width: 'min(500px, 100%)', background: '#FFFFFF', borderRadius: 20, border: `1px solid ${COLORS.border}`, boxShadow: '0 24px 60px rgba(0,0,0,0.25)', overflow: 'hidden', animation: 'fadeIn 0.2s ease-out' }}>
+            <div style={{ padding: '20px 24px', borderBottom: `1px solid ${COLORS.border}`, display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 42, height: 42, borderRadius: 12, background: 'rgba(239, 68, 68, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#DC2626', fontSize: 20 }}>
+                🗑️
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: COLORS.text }}>
+                  {user?.role === 'admin' ? 'Moderate & Delete Post' : 'Delete Post'}
+                </h3>
+                <p style={{ margin: '2px 0 0', fontSize: 13, color: COLORS.textMuted }}>
+                  This action cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <div style={{ padding: '20px 24px' }}>
+              <p style={{ margin: '0 0 14px', fontSize: 15, color: COLORS.text, lineHeight: 1.5 }}>
+                Are you sure you want to delete this post by <strong>{deleteModal.post.user || 'Unknown User'}</strong>? All comments and bookmarks will also be removed.
+              </p>
+
+              {deleteModal.post.content && (
+                <div style={{ padding: '10px 14px', background: COLORS.bg, borderRadius: 10, fontSize: 13, color: COLORS.textMuted, fontStyle: 'italic', marginBottom: 16, borderLeft: `3px solid ${COLORS.primary}`, maxHeight: 80, overflowY: 'auto' }}>
+                  "{deleteModal.post.content.slice(0, 140)}{deleteModal.post.content.length > 140 ? '...' : ''}"
+                </div>
+              )}
+
+              {user?.role === 'admin' && (
+                <div style={{ marginTop: 12 }}>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: COLORS.text, marginBottom: 6 }}>
+                    Moderation Reason (Logged)
+                  </label>
+                  <select
+                    value={deleteModal.reason}
+                    onChange={(e) => setDeleteModal(prev => ({ ...prev, reason: e.target.value }))}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: `1px solid ${COLORS.border}`, background: '#FFFFFF', fontSize: 14, color: COLORS.text, outline: 'none', marginBottom: 8 }}
+                  >
+                    <option value="Violated community guidelines">Violated community guidelines</option>
+                    <option value="Spam / Advertisements / Promotional">Spam / Advertisements / Promotional</option>
+                    <option value="Misleading or unsafe farming advice">Misleading or unsafe farming advice</option>
+                    <option value="Abusive or inappropriate behavior">Abusive or inappropriate behavior</option>
+                    <option value="Duplicate or low-quality content">Duplicate or low-quality content</option>
+                    <option value="Other">Other (custom)</option>
+                  </select>
+                  {deleteModal.reason === 'Other' && (
+                    <input
+                      type="text"
+                      placeholder="Specify custom reason..."
+                      onChange={(e) => setDeleteModal(prev => ({ ...prev, reason: e.target.value }))}
+                      style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: `1px solid ${COLORS.border}`, fontSize: 13, marginTop: 4 }}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div style={{ padding: '16px 24px', background: '#F9FAFB', borderTop: `1px solid ${COLORS.border}`, display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => setDeleteModal({ isOpen: false, post: null, reason: '' })}
+                style={{ padding: '9px 18px', borderRadius: 10, border: `1px solid ${COLORS.border}`, background: '#FFFFFF', color: COLORS.text, fontWeight: 600, fontSize: 14, cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={confirmDelete}
+                style={{ padding: '9px 20px', borderRadius: 10, border: 'none', background: '#DC2626', color: '#FFFFFF', fontWeight: 700, fontSize: 14, cursor: deleting ? 'not-allowed' : 'pointer', opacity: deleting ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                {deleting ? 'Deleting...' : (user?.role === 'admin' ? 'Delete as Admin' : 'Delete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {selectedPost && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(10, 30, 10, 0.45)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div style={{ width: 'min(860px, 100%)', maxHeight: '90vh', overflowY: 'auto', background: 'rgba(255,255,255,0.96)', borderRadius: 22, border: `1px solid ${COLORS.border}`, boxShadow: '0 24px 60px rgba(0,0,0,0.22)' }}>
