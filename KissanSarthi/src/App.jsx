@@ -125,7 +125,17 @@ export default function App() {
                   <>
                     <Navbar onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} sidebarOpen={sidebarOpen} />
                     <Sidebar open={sidebarOpen} />
-                    <main style={{ marginLeft: sidebarOpen && !isMobile ? "220px" : "0px", padding: !isMobile ? "30px" : "15px", marginTop: "62px", transition: "margin-left 0.3s ease", minHeight: "calc(100vh - 62px)" }}>
+                    <main
+                      style={{
+                        marginLeft: sidebarOpen && !isMobile ? "240px" : "0px",
+                        padding: !isMobile ? "28px 36px 48px" : "20px 16px 36px",
+                        marginTop: "72px",
+                        transition: "margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                        minHeight: "calc(100vh - 72px)",
+                        position: "relative",
+                        zIndex: 1,
+                      }}
+                    >
                       <div className="page-transition">
                         <Routes>
                           <Route path="/" element={<Navigate to="/dashboard" replace />} />

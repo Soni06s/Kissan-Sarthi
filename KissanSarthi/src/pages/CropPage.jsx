@@ -198,7 +198,7 @@ const CropPage = () => {
               max={200}
               step={1}
               value={form.nitrogen}
-              onChange={val => setForm({ ...form, nitrogen: val })}
+              onChange={e => setForm({ ...form, nitrogen: Number(e.target ? e.target.value : e) })}
               color={COLORS.primary}
               lowLabel="0 (Deficient)"
               highLabel="200 (Enriched)"
@@ -212,7 +212,7 @@ const CropPage = () => {
               max={50}
               step={1}
               value={form.temp}
-              onChange={val => setForm({ ...form, temp: val })}
+              onChange={e => setForm({ ...form, temp: Number(e.target ? e.target.value : e) })}
               color="#E65100"
               lowLabel="10°C (Cold)"
               highLabel="50°C (Torrid)"
@@ -226,7 +226,7 @@ const CropPage = () => {
               max={1000}
               step={10}
               value={form.rainfall}
-              onChange={val => setForm({ ...form, rainfall: val })}
+              onChange={e => setForm({ ...form, rainfall: Number(e.target ? e.target.value : e) })}
               color="#1976D2"
               lowLabel="50 mm (Arid)"
               highLabel="1000 mm (Heavy)"

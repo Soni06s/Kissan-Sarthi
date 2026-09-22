@@ -7,6 +7,7 @@ import { Icon } from '../components/common/Icon';
 import { useAuth } from '../context/AuthContext';
 import { paymentAPI } from '../services/api';
 import { openRazorpayCheckout } from '../utils/razorpay';
+import { isProUser, getProExpiryDate } from '../utils/subscription';
 
 export default function PricingPage() {
   const { t } = useTranslation();
@@ -17,14 +18,8 @@ export default function PricingPage() {
   const [loading, setLoading] = useState(false);
   const [paymentSuccessData, setPaymentSuccessData] = useState(null);
 
-  const isPro = user?.subscription?.plan === 'pro';
-  const proExpiresAt = user?.subscription?.expiresAt
-    ? new Date(user.subscription.expiresAt).toLocaleDateString('en-IN', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      })
-    : null;
+  const isPro = isProUser(user);
+  const proExpiresAt = getProExpiryDate(user);
 
   const handleSubscribe = async () => {
     if (!isAuthenticated) {
@@ -74,11 +69,15 @@ export default function PricingPage() {
               razorpaySignature: rzpResponse.razorpaySignature,
             });
 
-            toast.success('Payment verified! Welcome to KissanSarthi Pro 💎', { id: 'rzp-verify' });
+            // 4. Update auth state across the whole app
+            const refreshed = await refreshUser();
             setPaymentSuccessData(verifyRes.data?.data);
 
-            // 4. Update auth state across the whole app
-            await refreshUser();
+            if (isProUser(refreshed) || verifyRes.data?.data?.fulfillment?.plan === 'pro') {
+              toast.success("You're now a Pro member! 🎉 Unlimited agricultural advisory unlocked.", { id: 'rzp-verify', duration: 5000 });
+            } else {
+              toast.success('Payment verified! Welcome to KissanSarthi Pro 💎', { id: 'rzp-verify' });
+            }
           } catch (verifyErr) {
             console.error('Verification error:', verifyErr);
             toast.error(

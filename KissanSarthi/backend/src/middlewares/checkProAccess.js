@@ -17,8 +17,11 @@ export const checkCropRecommendationLimit = async (req, res, next) => {
     }
 
     // Auto-downgrade expired pro subscription
-    const isPro = user.checkSubscription();
-    if (user.isModified('subscription.plan')) {
+    const isPro = typeof user.checkSubscription === 'function'
+      ? user.checkSubscription()
+      : (user.subscription?.plan === 'pro' && (!user.subscription?.expiresAt || new Date(user.subscription.expiresAt) > new Date()));
+
+    if (user.isModified && user.isModified('subscription.plan')) {
       await user.save();
     }
 

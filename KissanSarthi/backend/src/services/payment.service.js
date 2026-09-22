@@ -11,6 +11,7 @@ import {
 } from '../config/razorpay.js';
 import { AppError } from '../utils/AppError.js';
 import { HTTP_STATUS } from '../config/constants.js';
+import { sanitizeUser } from '../utils/helpers.js';
 import logger from '../config/logger.js';
 
 class PaymentService {
@@ -114,6 +115,7 @@ class PaymentService {
         plan: 'pro',
         billingCycle,
         expiresAt,
+        user: sanitizeUser(user),
         message: 'KissanSarthi Pro Subscription Activated! Enjoy unlimited scans and priority features.',
       };
     }
@@ -227,7 +229,7 @@ class PaymentService {
     if (event.event === 'payment.captured' || event.event === 'order.paid') {
       const rzpPayment = event.payload.payment?.entity;
       if (rzpPayment?.order_id) {
-        await Payment.findOneAndUpdate(
+        const payment = await Payment.findOneAndUpdate(
           { razorpayOrderId: rzpPayment.order_id },
           {
             $set: {
@@ -235,8 +237,24 @@ class PaymentService {
               razorpayPaymentId: rzpPayment.id,
               paidAt: new Date(),
             },
-          }
+          },
+          { new: true }
         );
+
+        if (payment && payment.purpose === 'pro_subscription') {
+          const billingCycle = payment.metadata?.billingCycle || 'monthly';
+          const durationDays = billingCycle === 'yearly' ? 365 : 30;
+          const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
+
+          await User.findByIdAndUpdate(payment.userId, {
+            $set: {
+              'subscription.plan': 'pro',
+              'subscription.billingCycle': billingCycle,
+              'subscription.startsAt': new Date(),
+              'subscription.expiresAt': expiresAt,
+            },
+          });
+        }
       }
     }
 

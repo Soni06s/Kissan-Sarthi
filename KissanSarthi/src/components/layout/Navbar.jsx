@@ -6,6 +6,7 @@ import { Icon } from '../common/Icon';
 import AuthModal from '../auth/AuthModal';
 import { useAuth } from '../../context/AuthContext';
 import LanguageSwitcher from '../common/LanguageSwitcher';
+import { isProUser } from '../../utils/subscription';
 
 const API_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
 
@@ -73,6 +74,7 @@ const Navbar = ({ onToggleSidebar, sidebarOpen, onLogin }) => {
   };
 
   const currentRole = user?.role || 'farmer';
+  const isPro = isProUser(user);
   const filteredResults = searchQuery.trim()
     ? SEARCH_CATALOG
         .filter(item => item.category !== 'Admin' || currentRole === 'admin')
@@ -99,12 +101,12 @@ const Navbar = ({ onToggleSidebar, sidebarOpen, onLogin }) => {
     <>
       <nav style={{
         position: "fixed", top: 0, left: 0, right: 0, height: 72,
-        background: "rgba(255,255,255,0.85)",
+        background: "rgba(255,255,255,0.98)",
         borderBottom: `1px solid ${COLORS.border}`,
         display: "flex", alignItems: "center", justifyContent: "space-between",
         padding: "0 24px", zIndex: 1000,
         backdropFilter: "blur(20px) saturate(180%)",
-        boxShadow: "0 4px 30px rgba(0, 0, 0, 0.03)"
+        boxShadow: "0 4px 20px rgba(0, 0, 0, 0.05)"
       }}>
 
         {/* ─── LEFT: BRANDING ────────────────────────────────────────── */}
@@ -154,7 +156,7 @@ const Navbar = ({ onToggleSidebar, sidebarOpen, onLogin }) => {
         </div>
 
         {/* ─── CENTER: PRO COMMAND SEARCH ────────────────────────────── */}
-        <div style={{
+        <div className="navbar-search-container" style={{
           flex: 1,
           maxWidth: 550,
           position: 'relative',
@@ -261,7 +263,7 @@ const Navbar = ({ onToggleSidebar, sidebarOpen, onLogin }) => {
           boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
         }}>
           {/* LIVE TIME CLOCK */}
-          <div style={{ 
+          <div className="navbar-clock-container" style={{ 
             padding: "2px 10px",
             textAlign: 'right', 
             display: 'flex', 
@@ -283,38 +285,38 @@ const Navbar = ({ onToggleSidebar, sidebarOpen, onLogin }) => {
             </div>
           </div>
 
-          <div style={{ width: 1, height: 26, background: COLORS.border }} />
+          <div className="navbar-clock-divider" style={{ width: 1, height: 26, background: COLORS.border }} />
 
           {/* ACTION PILLS: GO PRO (SHIMMER CTA) & EXPERTS */}
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Link
               to="/pricing"
-              className={user?.subscription?.plan === 'pro' ? "" : "btn-pro"}
+              className={isPro ? "" : "btn-pro"}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 6,
                 padding: '7px 14px',
                 borderRadius: 12,
-                background: user?.subscription?.plan === 'pro'
+                background: isPro
                   ? 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)'
                   : 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
-                border: user?.subscription?.plan === 'pro'
+                border: isPro
                   ? '1px solid #FCD34D'
                   : '1px solid #F59E0B',
-                color: user?.subscription?.plan === 'pro' ? '#92400E' : '#FFFFFF',
+                color: isPro ? '#92400E' : '#FFFFFF',
                 textDecoration: 'none',
                 fontWeight: 800,
                 fontSize: 12,
-                boxShadow: user?.subscription?.plan === 'pro'
+                boxShadow: isPro
                   ? '0 2px 6px rgba(245, 158, 11, 0.2)'
                   : '0 4px 14px rgba(217, 119, 6, 0.35)',
                 transition: 'all 0.2s',
                 letterSpacing: "0.02em"
               }}
             >
-              <span>{user?.subscription?.plan === 'pro' ? '👑' : '✨'}</span>
-              <span>{user?.subscription?.plan === 'pro' ? 'Pro Member' : 'Go Pro'}</span>
+              <span>{isPro ? '👑' : '✨'}</span>
+              <span>{isPro ? 'Pro Member' : 'Go Pro'}</span>
             </Link>
 
             <Link
@@ -385,7 +387,7 @@ const Navbar = ({ onToggleSidebar, sidebarOpen, onLogin }) => {
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: 14, fontWeight: 900, color: COLORS.text, lineHeight: 1.2, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
                   <span>{isAuthenticated ? user?.name : t('navbar.guestFarmer')}</span>
-                  {isAuthenticated && user?.subscription?.plan === 'pro' && (
+                  {isAuthenticated && isPro && (
                     <span
                       title="KissanSarthi Pro Member"
                       style={{

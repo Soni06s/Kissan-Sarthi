@@ -86,6 +86,7 @@ export const weatherAPI = {
 
 export const cropAPI = {
   recommend: (data) => api.post('/crop/recommend', data),
+  predict: (data) => api.post('/crop/recommend', data),
   getHistory: () => api.get('/crop/history'),
   downloadPdf: (id) => api.get(`/crop/report/${id}/pdf`, { responseType: 'blob' }),
 };
@@ -109,8 +110,14 @@ export const schemeAPI = {
 
 export const fertilizerAPI = {
   calculate: (data) => api.post('/fertilizer/calculate', data),
+  predict: (data) => api.post('/fertilizer/calculate', data),
   getHistory: () => api.get('/fertilizer/history'),
   downloadPdf: (id) => api.get(`/fertilizer/report/${id}/pdf`, { responseType: 'blob' }),
+  downloadPlanPdf: (dataOrId) => {
+    const id = typeof dataOrId === 'string' ? dataOrId : (dataOrId?.prescription?.id || dataOrId?.id || dataOrId?._id);
+    if (!id) throw new Error('Fertilizer record ID is required for PDF generation');
+    return api.get(`/fertilizer/report/${id}/pdf`, { responseType: 'blob' });
+  },
 };
 
 export const communityAPI = {

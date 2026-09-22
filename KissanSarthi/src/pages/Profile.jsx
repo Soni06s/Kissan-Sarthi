@@ -7,10 +7,13 @@ import { authAPI, paymentAPI } from '../services/api';
 import { COLORS } from '../constants/theme';
 import { Icon } from '../components/common/Icon';
 import { Card } from '../components/common/Card';
+import { isProUser, getProExpiryDate } from '../utils/subscription';
 
 const ProfilePage = () => {
   const { t } = useTranslation();
   const { user, updateUser } = useAuth();
+  const isPro = isProUser(user);
+  const proExpiresAt = getProExpiryDate(user);
   const fileInputRef = useRef(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -275,7 +278,7 @@ const ProfilePage = () => {
           
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 6 }}>
             <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: COLORS.text }}>{user.name}</h2>
-            {user.subscription?.plan === 'pro' && (
+            {isPro && (
               <span title="KissanSarthi Pro Member" style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A', padding: '2px 8px', borderRadius: 12, fontSize: 10, fontWeight: 900 }}>
                 PRO
               </span>
@@ -291,7 +294,7 @@ const ProfilePage = () => {
               <span style={{ color: COLORS.textMuted, fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span>💎</span> Membership
               </span>
-              {user.subscription?.plan === 'pro' ? (
+              {isPro ? (
                 <span style={{ color: '#B45309', fontSize: 11, fontWeight: 900, background: '#FEF3C7', padding: '3px 8px', borderRadius: 16, border: '1px solid #FDE68A' }}>
                   👑 PRO
                 </span>
@@ -302,10 +305,10 @@ const ProfilePage = () => {
               )}
             </div>
 
-            {user.subscription?.plan === 'pro' ? (
+            {isPro ? (
               <div style={{ fontSize: 12, color: '#1B5E20', background: '#E8F5E9', padding: '8px 10px', borderRadius: 8, border: '1px solid #C8E6C9' }}>
                 🌟 <strong>Unlimited AI Scans & Advice</strong><br />
-                Valid till: {user.subscription?.expiresAt ? new Date(user.subscription.expiresAt).toLocaleDateString() : 'Active'}
+                Valid till: {proExpiresAt || 'Active'}
               </div>
             ) : (
               <div>

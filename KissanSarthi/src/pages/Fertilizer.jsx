@@ -35,7 +35,7 @@ const FertilizerPage = () => {
         location: userLocation,
       };
 
-      const res = await fertilizerAPI.predict(payload);
+      const res = await (fertilizerAPI.predict ? fertilizerAPI.predict(payload) : fertilizerAPI.calculate(payload));
       if (res.data?.data) {
         setResult(res.data.data);
       } else {
@@ -52,15 +52,18 @@ const FertilizerPage = () => {
 
   const handleDownloadPdf = async () => {
     if (!result) return;
+    const recordId = result.id || result._id;
     setDownloading(true);
     try {
-      const response = await fertilizerAPI.downloadPlanPdf({
-        crop: form.crop,
-        stage: form.stage,
-        soilPH: form.soilPH,
-        deficiency: form.deficiency,
-        prescription: result,
-      });
+      const response = recordId && fertilizerAPI.downloadPdf
+        ? await fertilizerAPI.downloadPdf(recordId)
+        : await fertilizerAPI.downloadPlanPdf({
+            crop: form.crop,
+            stage: form.stage,
+            soilPH: form.soilPH,
+            deficiency: form.deficiency,
+            prescription: result,
+          });
 
       const blob = new Blob([response.data], { type: "application/pdf" });
       const url = window.URL.createObjectURL(blob);
@@ -143,7 +146,7 @@ const FertilizerPage = () => {
             <RangeSlider
               label="Soil pH Level"
               value={form.soilPH}
-              onChange={e => setForm({ ...form, soilPH: +e.target.value })}
+              onChange={e => setForm({ ...form, soilPH: Number(e.target ? e.target.value : e) })}
               min={4}
               max={9}
               step={0.1}

@@ -119,5 +119,16 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
 };
 
+userSchema.methods.checkSubscription = function () {
+  if (this.subscription?.plan === 'pro') {
+    if (this.subscription.expiresAt && new Date(this.subscription.expiresAt) < new Date()) {
+      this.subscription.plan = 'free';
+      return false;
+    }
+    return true;
+  }
+  return false;
+};
+
 const User = mongoose.model('User', userSchema);
 export default User;

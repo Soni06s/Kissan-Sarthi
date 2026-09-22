@@ -73,10 +73,12 @@ export const AuthProvider = ({ children }) => {
       const res = await authAPI.getProfile();
       if (res.data?.data?.user) {
         updateUser(res.data.data.user);
+        return res.data.data.user;
       }
     } catch (error) {
       console.error("Failed to refresh user profile", error);
     }
+    return null;
   };
 
   return (
